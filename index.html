@@ -407,6 +407,8 @@
   let allRoutes = [];
   let selectedRouteIndex = 0;
   let lastResults = [];
+  let lastOrigin = '';
+  let lastDestination = '';
 
   const statusEl = document.getElementById('status');
   const resultCountEl = document.getElementById('resultCount');
@@ -781,7 +783,13 @@
         : openNow === false
         ? '<span class="open-badge closed">已打烊</span>'
         : '';
-      const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${pos.lat},${pos.lng}${p.id ? `&destination_place_id=${p.id}` : ''}`;
+      // 帶原本的起點/終點，把這間店當中途停靠點，開起來是一條完整的「起點→餐廳→目的地」路線
+      const waypoint = p.id ? `place_id:${p.id}` : `${pos.lat},${pos.lng}`;
+      const navUrl = `https://www.google.com/maps/dir/?api=1`
+        + `&origin=${encodeURIComponent(lastOrigin)}`
+        + `&destination=${encodeURIComponent(lastDestination)}`
+        + `&waypoints=${encodeURIComponent(waypoint)}`
+        + `&travelmode=driving`;
       const routeDistanceText = formatRouteDistance(p._routeDistance);
       card.innerHTML = `
         <div class="name">${name}</div>
@@ -792,7 +800,7 @@
           ${price ? `<span>${price}</span>` : ''}
           ${openStatus}
         </div>
-        <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer">導航 →</a>
+        <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
       `;
       card.addEventListener('click', () => {
         map.panTo(pos);
@@ -858,6 +866,8 @@
     if (!GOOGLE_MAPS_API_KEY) return setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
     if (!origin || !destination) return setStatus('請輸入起點與目的地', 'error');
 
+    lastOrigin = origin;
+    lastDestination = destination;
     saveSearch();
 
     searchBtn.disabled = true;
