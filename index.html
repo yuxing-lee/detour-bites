@@ -111,6 +111,29 @@
   button:hover { background: #ffb85c; }
   button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; }
 
+  .input-with-button {
+    display: flex;
+    gap: 8px;
+  }
+
+  .input-with-button input {
+    flex: 1;
+  }
+
+  .secondary-btn {
+    margin-top: 0;
+    width: auto;
+    white-space: nowrap;
+    background: transparent;
+    border: 1px solid var(--panel-line);
+    color: var(--paper);
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .secondary-btn:hover { background: #1f274a; }
+  .secondary-btn:disabled { background: transparent; color: var(--muted); cursor: not-allowed; }
+
   .status {
     margin-top: 14px;
     font-size: 13px;
@@ -126,6 +149,44 @@
     font-size: 11.5px;
     color: var(--muted);
     line-height: 1.5;
+  }
+
+  .route-options {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .route-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+
+  .route-option.selected { border-color: var(--amber); }
+
+  .route-option input[type="radio"] {
+    width: auto;
+    margin: 0;
+    accent-color: var(--amber);
+  }
+
+  .route-option-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
+  .route-option-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
   }
 
   .divider {
@@ -209,7 +270,10 @@
     </header>
 
     <label for="origin">起點</label>
-    <input id="origin" type="text" placeholder="例如：台北車站" />
+    <div class="input-with-button">
+      <input id="origin" type="text" placeholder="例如：台北車站" />
+      <button type="button" id="useCurrentLocationBtn" class="secondary-btn">目前位置</button>
+    </div>
 
     <label for="destination">目的地</label>
     <input id="destination" type="text" placeholder="例如：台中高鐵站" />
@@ -230,6 +294,7 @@
 
     <button id="searchBtn">搜尋沿路美食</button>
     <div id="status" class="status"></div>
+    <div id="routeOptions" class="route-options" hidden></div>
 
     <div class="divider"></div>
 
@@ -252,12 +317,17 @@
   let map, directionsService, directionsRenderer;
   let placeMarkers = [];
   let sdkLoaded = false;
+  let allRoutes = [];
+  let selectedRouteIndex = 0;
 
   const statusEl = document.getElementById('status');
   const resultCountEl = document.getElementById('resultCount');
   const resultListEl = document.getElementById('resultList');
   const mapHintEl = document.getElementById('mapHint');
   const searchBtn = document.getElementById('searchBtn');
+  const originInput = document.getElementById('origin');
+  const useCurrentLocationBtn = document.getElementById('useCurrentLocationBtn');
+  const routeOptionsEl = document.getElementById('routeOptions');
 
   function setStatus(msg, kind) {
     statusEl.textContent = msg;
@@ -268,6 +338,29 @@
     setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
     searchBtn.disabled = true;
   }
+
+  useCurrentLocationBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      setStatus('這個瀏覽器不支援定位功能', 'error');
+      return;
+    }
+    useCurrentLocationBtn.disabled = true;
+    useCurrentLocationBtn.textContent = '定位中…';
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        originInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        useCurrentLocationBtn.disabled = false;
+        useCurrentLocationBtn.textContent = '目前位置';
+        setStatus('已取得目前位置', 'ok');
+      },
+      (err) => {
+        useCurrentLocationBtn.disabled = false;
+        useCurrentLocationBtn.textContent = '目前位置';
+        setStatus('無法取得目前位置：' + err.message, 'error');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
 
   function loadGoogleMapsSDK() {
     return new Promise((resolve, reject) => {
@@ -310,6 +403,49 @@
   function clearPlaceMarkers() {
     placeMarkers.forEach(m => m.setMap(null));
     placeMarkers = [];
+  }
+
+  function summarizeRoute(route) {
+    let distanceMeters = 0;
+    let durationSeconds = 0;
+    route.legs.forEach(leg => {
+      distanceMeters += leg.distance ? leg.distance.value : 0;
+      durationSeconds += leg.duration ? leg.duration.value : 0;
+    });
+    const km = (distanceMeters / 1000).toFixed(1);
+    const mins = Math.round(durationSeconds / 60);
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    const durationText = hours > 0 ? `${hours} 小時 ${remMins} 分` : `${mins} 分`;
+    return `${km} 公里・約 ${durationText}`;
+  }
+
+  function renderRouteOptions() {
+    routeOptionsEl.innerHTML = '';
+    const routes = allRoutes.slice(0, 3);
+
+    routes.forEach((route, i) => {
+      const card = document.createElement('label');
+      card.className = 'route-option' + (i === selectedRouteIndex ? ' selected' : '');
+      card.innerHTML = `
+        <input type="radio" name="routeChoice" value="${i}" ${i === selectedRouteIndex ? 'checked' : ''} />
+        <div>
+          <div class="route-option-title">路線 ${i + 1}${route.summary ? '：' + route.summary : ''}</div>
+          <div class="route-option-meta">${summarizeRoute(route)}</div>
+        </div>
+      `;
+      card.querySelector('input').addEventListener('change', () => selectRoute(i));
+      routeOptionsEl.appendChild(card);
+    });
+
+    routeOptionsEl.hidden = routes.length === 0;
+  }
+
+  async function selectRoute(index) {
+    selectedRouteIndex = index;
+    directionsRenderer.setRouteIndex(index);
+    renderRouteOptions();
+    await searchAlongRoute(index);
   }
 
   // 沿路徑每隔 intervalKm 公里取一個採樣點
@@ -445,36 +581,15 @@
     });
   }
 
-  async function runSearch() {
-    const origin = document.getElementById('origin').value.trim();
-    const destination = document.getElementById('destination').value.trim();
+  async function searchAlongRoute(routeIndex) {
     const intervalKm = parseFloat(document.getElementById('interval').value) || 8;
     const radius = parseInt(document.getElementById('radius').value, 10) || 1200;
     const keyword = document.getElementById('keyword').value.trim();
 
-    if (!GOOGLE_MAPS_API_KEY) return setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
-    if (!origin || !destination) return setStatus('請輸入起點與目的地', 'error');
-
     searchBtn.disabled = true;
-    setStatus('載入地圖服務中…');
 
     try {
-      await loadGoogleMapsSDK();
-      initMapIfNeeded();
-
-      setStatus('規劃路線中…');
-      const result = await new Promise((resolve, reject) => {
-        directionsService.route(
-          { origin, destination, travelMode: google.maps.TravelMode.DRIVING },
-          (res, status) => {
-            if (status === google.maps.DirectionsStatus.OK) resolve(res);
-            else reject(new Error('路線規劃失敗：' + status));
-          }
-        );
-      });
-
-      directionsRenderer.setDirections(result);
-      const path = result.routes[0].overview_path;
+      const path = allRoutes[routeIndex].overview_path;
       const samplePoints = samplePointsAlongPath(path, intervalKm);
 
       setStatus(`路線取得完成，沿路 ${samplePoints.length} 個點搜尋中…`);
@@ -497,8 +612,48 @@
       setStatus(`完成！共取樣 ${samplePoints.length} 個點，找到 ${finalResults.length} 間不重複的餐廳。`, 'ok');
     } catch (err) {
       console.error(err);
-      setStatus(err.message || '發生錯誤，請檢查 API key 與網路連線', 'error');
+      setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
     } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  async function runSearch() {
+    const origin = originInput.value.trim();
+    const destination = document.getElementById('destination').value.trim();
+
+    if (!GOOGLE_MAPS_API_KEY) return setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
+    if (!origin || !destination) return setStatus('請輸入起點與目的地', 'error');
+
+    searchBtn.disabled = true;
+    routeOptionsEl.hidden = true;
+    setStatus('載入地圖服務中…');
+
+    try {
+      await loadGoogleMapsSDK();
+      initMapIfNeeded();
+
+      setStatus('規劃路線中…');
+      const result = await new Promise((resolve, reject) => {
+        directionsService.route(
+          { origin, destination, travelMode: google.maps.TravelMode.DRIVING, provideRouteAlternatives: true },
+          (res, status) => {
+            if (status === google.maps.DirectionsStatus.OK) resolve(res);
+            else reject(new Error('路線規劃失敗：' + status));
+          }
+        );
+      });
+
+      allRoutes = result.routes;
+      selectedRouteIndex = 0;
+      directionsRenderer.setDirections(result);
+      directionsRenderer.setRouteIndex(0);
+      renderRouteOptions();
+
+      await searchAlongRoute(0);
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message || '發生錯誤，請檢查 API key 與網路連線', 'error');
       searchBtn.disabled = false;
     }
   }
