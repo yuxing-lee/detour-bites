@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>沿路美食搜尋</title>
+<style>
+  :root {
+    --ink: #12172b;
+    --panel: #171d35;
+    --panel-line: #2a3355;
+    --paper: #f3f1ea;
+    --amber: #f2a340;
+    --amber-dim: #b97c2c;
+    --muted: #9aa3c7;
+    --good: #6fbf8b;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  }
+
+  h1, h2, h3 {
+    font-family: Georgia, "Noto Serif TC", serif;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    height: 100vh;
+  }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
+  }
+
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--panel-line);
+    padding: 28px 26px;
+    overflow-y: auto;
+  }
+
+  .sidebar header {
+    margin-bottom: 22px;
+  }
+
+  .sidebar h1 {
+    font-size: 22px;
+    line-height: 1.3;
+    color: var(--paper);
+  }
+
+  .sidebar .tagline {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+
+  label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin: 16px 0 6px;
+  }
+
+  input, select {
+    width: 100%;
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    color: var(--paper);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--amber);
+  }
+
+  .row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  button {
+    margin-top: 22px;
+    width: 100%;
+    background: var(--amber);
+    color: #221202;
+    border: none;
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  button:hover { background: #ffb85c; }
+  button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; }
+
+  .status {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    min-height: 18px;
+  }
+
+  .status.error { color: #e6816f; }
+  .status.ok { color: var(--good); }
+
+  .key-note {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--panel-line);
+    margin: 24px 0;
+  }
+
+  .results h2 {
+    font-size: 15px;
+    color: var(--paper);
+    margin-bottom: 4px;
+  }
+
+  .results .count {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .place-card {
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+
+  .place-card:hover { border-color: var(--amber-dim); }
+
+  .place-card .name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
+  .place-card .meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .place-card .rating { color: var(--amber); }
+
+  .main {
+    position: relative;
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+  }
+
+  .map-hint {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(15, 20, 40, 0.88);
+    color: var(--muted);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    z-index: 5;
+    max-width: 320px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="sidebar">
+    <header>
+      <h1>沿路美食搜尋</h1>
+      <div class="tagline">輸入起點與目的地,自動沿路線取樣搜尋附近餐廳</div>
+    </header>
+
+    <label for="origin">起點</label>
+    <input id="origin" type="text" placeholder="例如：台北車站" />
+
+    <label for="destination">目的地</label>
+    <input id="destination" type="text" placeholder="例如：台中高鐵站" />
+
+    <div class="row2">
+      <div>
+        <label for="interval">取樣間隔 (km)</label>
+        <input id="interval" type="number" value="8" min="1" step="1" />
+      </div>
+      <div>
+        <label for="radius">搜尋半徑 (m)</label>
+        <input id="radius" type="number" value="1200" min="200" step="100" />
+      </div>
+    </div>
+
+    <label for="keyword">關鍵字 (選填)</label>
+    <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵" />
+
+    <button id="searchBtn">搜尋沿路美食</button>
+    <div id="status" class="status"></div>
+
+    <div class="divider"></div>
+
+    <div class="results">
+      <h2>搜尋結果</h2>
+      <div id="resultCount" class="count">尚未搜尋</div>
+      <div id="resultList"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="map-hint" id="mapHint">按下搜尋，地圖會顯示在這裡。</div>
+    <div id="map"></div>
+  </div>
+</div>
+
+<script type="module">
+  const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  let map, directionsService, directionsRenderer;
+  let placeMarkers = [];
+  let sdkLoaded = false;
+
+  const statusEl = document.getElementById('status');
+  const resultCountEl = document.getElementById('resultCount');
+  const resultListEl = document.getElementById('resultList');
+  const mapHintEl = document.getElementById('mapHint');
+  const searchBtn = document.getElementById('searchBtn');
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  if (!GOOGLE_MAPS_API_KEY) {
+    setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
+    searchBtn.disabled = true;
+  }
+
+  function loadGoogleMapsSDK() {
+    return new Promise((resolve, reject) => {
+      if (sdkLoaded) return resolve();
+      window.__gmapsInit = () => {
+        sdkLoaded = true;
+        resolve();
+      };
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry&callback=__gmapsInit`;
+      script.onerror = () => reject(new Error('Google Maps SDK 載入失敗，請確認 API key 是否正確、且已啟用 Maps JavaScript API / Directions API'));
+      document.head.appendChild(script);
+    });
+  }
+
+  function initMapIfNeeded() {
+    if (map) return;
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: { lat: 25.0478, lng: 121.5171 },
+      zoom: 8,
+      disableDefaultUI: false,
+      styles: [
+        { elementType: 'geometry', stylers: [{ color: '#1b2140' }] },
+        { elementType: 'labels.text.fill', stylers: [{ color: '#9aa3c7' }] },
+        { elementType: 'labels.text.stroke', stylers: [{ color: '#12172b' }] },
+        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a3355' }] },
+        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f1428' }] },
+        { featureType: 'poi', stylers: [{ visibility: 'off' }] }
+      ]
+    });
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({
+      map,
+      suppressMarkers: false,
+      polylineOptions: { strokeColor: '#f2a340', strokeWeight: 5 }
+    });
+    mapHintEl.style.display = 'none';
+  }
+
+  function clearPlaceMarkers() {
+    placeMarkers.forEach(m => m.setMap(null));
+    placeMarkers = [];
+  }
+
+  // 沿路徑每隔 intervalKm 公里取一個採樣點
+  function samplePointsAlongPath(path, intervalKm) {
+    const points = [];
+    let accumulated = 0;
+    points.push(path[0]);
+    for (let i = 1; i < path.length; i++) {
+      const segDist = google.maps.geometry.spherical.computeDistanceBetween(path[i - 1], path[i]) / 1000;
+      accumulated += segDist;
+      if (accumulated >= intervalKm) {
+        points.push(path[i]);
+        accumulated = 0;
+      }
+    }
+    const last = path[path.length - 1];
+    if (points[points.length - 1] !== last) points.push(last);
+    return points;
+  }
+
+  // 新版 Places API (New)：POST /v1/places:searchNearby
+  async function nearbySearch(location, radius, keyword) {
+    const body = {
+      includedTypes: ['restaurant'],
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: { latitude: location.lat(), longitude: location.lng() },
+          radius: radius
+        }
+      },
+      rankPreference: 'POPULARITY',
+      languageCode: 'zh-TW'
+    };
+
+    const fieldMask = [
+      'places.id',
+      'places.displayName',
+      'places.formattedAddress',
+      'places.location',
+      'places.rating',
+      'places.userRatingCount',
+      'places.priceLevel'
+    ].join(',');
+
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+          'X-Goog-FieldMask': fieldMask
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn('searchNearby 回傳非 OK：', res.status, errText);
+        return [];
+      }
+
+      const data = await res.json();
+      let places = data.places || [];
+
+      // 新版 searchNearby 沒有 keyword 參數，若使用者有填關鍵字，在前端過濾名稱
+      if (keyword) {
+        places = places.filter(p =>
+          (p.displayName?.text || '').includes(keyword)
+        );
+      }
+      return places;
+    } catch (err) {
+      console.warn('searchNearby 發生錯誤：', err);
+      return [];
+    }
+  }
+
+  const PRICE_LABELS = {
+    PRICE_LEVEL_INEXPENSIVE: '$',
+    PRICE_LEVEL_MODERATE: '$$',
+    PRICE_LEVEL_EXPENSIVE: '$$$',
+    PRICE_LEVEL_VERY_EXPENSIVE: '$$$$'
+  };
+
+  function renderResults(places) {
+    resultCountEl.textContent = `找到 ${places.length} 間餐廳`;
+    resultListEl.innerHTML = '';
+    clearPlaceMarkers();
+
+    places.forEach(p => {
+      const pos = { lat: p.location.latitude, lng: p.location.longitude };
+      const name = p.displayName?.text || '(未命名)';
+      const address = p.formattedAddress || '';
+
+      const marker = new google.maps.Marker({
+        position: pos,
+        map,
+        title: name,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6,
+          fillColor: '#f2a340',
+          fillOpacity: 1,
+          strokeColor: '#12172b',
+          strokeWeight: 1.5
+        }
+      });
+      placeMarkers.push(marker);
+
+      const card = document.createElement('div');
+      card.className = 'place-card';
+      const rating = p.rating
+        ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
+        : '尚無評分';
+      const price = PRICE_LABELS[p.priceLevel] || '';
+      card.innerHTML = `
+        <div class="name">${name}</div>
+        <div class="meta">
+          <span class="rating">${rating}</span>
+          <span>${address}</span>
+          ${price ? `<span>${price}</span>` : ''}
+        </div>
+      `;
+      card.addEventListener('click', () => {
+        map.panTo(pos);
+        map.setZoom(15);
+        new google.maps.InfoWindow({
+          content: `<strong>${name}</strong><br>${address}`
+        }).open(map, marker);
+      });
+      resultListEl.appendChild(card);
+    });
+  }
+
+  async function runSearch() {
+    const origin = document.getElementById('origin').value.trim();
+    const destination = document.getElementById('destination').value.trim();
+    const intervalKm = parseFloat(document.getElementById('interval').value) || 8;
+    const radius = parseInt(document.getElementById('radius').value, 10) || 1200;
+    const keyword = document.getElementById('keyword').value.trim();
+
+    if (!GOOGLE_MAPS_API_KEY) return setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
+    if (!origin || !destination) return setStatus('請輸入起點與目的地', 'error');
+
+    searchBtn.disabled = true;
+    setStatus('載入地圖服務中…');
+
+    try {
+      await loadGoogleMapsSDK();
+      initMapIfNeeded();
+
+      setStatus('規劃路線中…');
+      const result = await new Promise((resolve, reject) => {
+        directionsService.route(
+          { origin, destination, travelMode: google.maps.TravelMode.DRIVING },
+          (res, status) => {
+            if (status === google.maps.DirectionsStatus.OK) resolve(res);
+            else reject(new Error('路線規劃失敗：' + status));
+          }
+        );
+      });
+
+      directionsRenderer.setDirections(result);
+      const path = result.routes[0].overview_path;
+      const samplePoints = samplePointsAlongPath(path, intervalKm);
+
+      setStatus(`路線取得完成，沿路 ${samplePoints.length} 個點搜尋中…`);
+
+      const allResultsMap = new Map();
+      for (let i = 0; i < samplePoints.length; i++) {
+        setStatus(`搜尋中… (${i + 1}/${samplePoints.length})`);
+        const places = await nearbySearch(samplePoints[i], radius, keyword);
+        places.forEach(p => {
+          if (p.id && !allResultsMap.has(p.id)) allResultsMap.set(p.id, p);
+        });
+        // 避免過快連續打 API
+        await new Promise(r => setTimeout(r, 150));
+      }
+
+      const finalResults = Array.from(allResultsMap.values())
+        .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+
+      renderResults(finalResults);
+      setStatus(`完成！共取樣 ${samplePoints.length} 個點，找到 ${finalResults.length} 間不重複的餐廳。`, 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message || '發生錯誤，請檢查 API key 與網路連線', 'error');
+    } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  searchBtn.addEventListener('click', runSearch);
+</script>
+
+</body>
+</html>
