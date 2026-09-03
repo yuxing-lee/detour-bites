@@ -133,8 +133,48 @@
     gap: 8px;
   }
 
-  .input-with-button input {
+  .input-with-button .autocomplete-wrap {
     flex: 1;
+  }
+
+  .autocomplete-wrap {
+    position: relative;
+  }
+
+  .autocomplete-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 6px;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 30;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .autocomplete-item {
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+
+  .autocomplete-item:hover,
+  .autocomplete-item.active {
+    background: #1f274a;
+  }
+
+  .autocomplete-item .main {
+    color: var(--paper);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .autocomplete-item .secondary {
+    color: var(--muted);
+    font-size: 11.5px;
+    margin-top: 2px;
   }
 
   .secondary-btn {
@@ -349,12 +389,18 @@
 
     <label for="origin">起點</label>
     <div class="input-with-button">
-      <input id="origin" type="text" placeholder="例如：台北車站" />
+      <div class="autocomplete-wrap">
+        <input id="origin" type="text" placeholder="例如：台北車站" autocomplete="off" />
+        <div id="originSuggestions" class="autocomplete-list" hidden></div>
+      </div>
       <button type="button" id="useCurrentLocationBtn" class="secondary-btn">目前位置</button>
     </div>
 
     <label for="destination">目的地</label>
-    <input id="destination" type="text" placeholder="例如：台中高鐵站" />
+    <div class="autocomplete-wrap">
+      <input id="destination" type="text" placeholder="例如：台中高鐵站" autocomplete="off" />
+      <div id="destinationSuggestions" class="autocomplete-list" hidden></div>
+    </div>
 
     <div class="row2">
       <div>
@@ -424,6 +470,8 @@
   const radiusInput = document.getElementById('radius');
   const keywordInput = document.getElementById('keyword');
   const useCurrentLocationBtn = document.getElementById('useCurrentLocationBtn');
+  const originSuggestionsEl = document.getElementById('originSuggestions');
+  const destinationSuggestionsEl = document.getElementById('destinationSuggestions');
   const routeOptionsEl = document.getElementById('routeOptions');
   const resultsControlsEl = document.getElementById('resultsControls');
   const sortSelectEl = document.getElementById('sortSelect');
@@ -503,11 +551,130 @@
         resolve();
       };
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry&callback=__gmapsInit`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry,places&callback=__gmapsInit`;
       script.onerror = () => reject(new Error('Google Maps SDK 載入失敗，請確認 API key 是否正確、且已啟用 Maps JavaScript API / Directions API'));
       document.head.appendChild(script);
     });
   }
+
+  function debounce(fn, delay) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delay);
+    };
+  }
+
+  // 用 AutocompleteSuggestion（新版 Places API，取代已對新客戶停用的 google.maps.places.Autocomplete）
+  // 自己畫下拉選單，這樣才能套用暗色主題、也不影響「目前位置」直接寫入座標字串的既有邏輯
+  function setupAutocomplete(inputEl, listEl) {
+    let sessionToken = null;
+    let currentSuggestions = [];
+    let activeIndex = -1;
+
+    function hideList() {
+      listEl.hidden = true;
+      listEl.innerHTML = '';
+      currentSuggestions = [];
+      activeIndex = -1;
+    }
+
+    function updateActive() {
+      Array.from(listEl.children).forEach((el, i) => {
+        el.classList.toggle('active', i === activeIndex);
+      });
+    }
+
+    function selectSuggestion(prediction) {
+      inputEl.value = prediction.text?.text || '';
+      hideList();
+      sessionToken = null; // 選完這次搜尋就結束，下次輸入會開新的 session
+    }
+
+    function renderList(suggestions) {
+      currentSuggestions = suggestions;
+      activeIndex = -1;
+      listEl.innerHTML = '';
+
+      if (!suggestions.length) {
+        hideList();
+        return;
+      }
+
+      suggestions.forEach((s) => {
+        const prediction = s.placePrediction;
+        const item = document.createElement('div');
+        item.className = 'autocomplete-item';
+        const main = prediction.mainText?.text || prediction.text?.text || '';
+        const secondary = prediction.secondaryText?.text || '';
+        item.innerHTML = `
+          <div class="main">${main}</div>
+          ${secondary ? `<div class="secondary">${secondary}</div>` : ''}
+        `;
+        // 用 mousedown 而不是 click，才能搶在 input 的 blur 事件把清單關掉之前完成選取
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          selectSuggestion(prediction);
+        });
+        listEl.appendChild(item);
+      });
+
+      listEl.hidden = false;
+    }
+
+    const fetchSuggestions = debounce(async (value) => {
+      if (!value) {
+        hideList();
+        return;
+      }
+      try {
+        await loadGoogleMapsSDK();
+        if (!sessionToken) sessionToken = new google.maps.places.AutocompleteSessionToken();
+        const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: value,
+          language: 'zh-TW',
+          sessionToken
+        });
+        renderList(suggestions || []);
+      } catch (err) {
+        console.warn('地址建議載入失敗：', err);
+        hideList();
+      }
+    }, 300);
+
+    inputEl.addEventListener('input', () => {
+      if (!GOOGLE_MAPS_API_KEY) return;
+      fetchSuggestions(inputEl.value.trim());
+    });
+
+    inputEl.addEventListener('blur', () => {
+      // 延遲一下，讓上面 mousedown 選取的邏輯先跑完，不然清單會在選取前就被關掉
+      setTimeout(hideList, 150);
+    });
+
+    inputEl.addEventListener('keydown', (e) => {
+      if (listEl.hidden || !currentSuggestions.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, currentSuggestions.length - 1);
+        updateActive();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        updateActive();
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0) {
+          e.preventDefault();
+          selectSuggestion(currentSuggestions[activeIndex].placePrediction);
+        }
+      } else if (e.key === 'Escape') {
+        hideList();
+      }
+    });
+  }
+
+  setupAutocomplete(originInput, originSuggestionsEl);
+  setupAutocomplete(destinationInput, destinationSuggestionsEl);
 
   function initMapIfNeeded() {
     if (map) return;
