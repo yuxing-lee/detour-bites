@@ -17,6 +17,7 @@
   }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
 
   html, body {
     margin: 0;
@@ -207,6 +208,36 @@
     margin-bottom: 14px;
   }
 
+  .results-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .results-controls select {
+    width: auto;
+    padding: 6px 10px;
+    font-size: 12.5px;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--muted);
+    cursor: pointer;
+    margin: 0;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    accent-color: var(--amber);
+  }
+
   .place-card {
     background: #0f1428;
     border: 1px solid var(--panel-line);
@@ -234,6 +265,19 @@
   }
 
   .place-card .rating { color: var(--amber); }
+
+  .open-badge { font-weight: 600; }
+  .open-badge.open { color: var(--good); }
+  .open-badge.closed { color: #e6816f; }
+
+  .place-card .nav-link {
+    color: var(--amber);
+    text-decoration: none;
+    font-weight: 600;
+    margin-left: auto;
+  }
+
+  .place-card .nav-link:hover { text-decoration: underline; }
 
   .main {
     position: relative;
@@ -300,6 +344,16 @@
 
     <div class="results">
       <h2>搜尋結果</h2>
+      <div id="resultsControls" class="results-controls" hidden>
+        <select id="sortSelect">
+          <option value="rating">評分高到低</option>
+          <option value="price">價格低到高</option>
+        </select>
+        <label class="checkbox-label">
+          <input type="checkbox" id="openNowOnly" />
+          只顯示營業中
+        </label>
+      </div>
       <div id="resultCount" class="count">尚未搜尋</div>
       <div id="resultList"></div>
     </div>
@@ -320,6 +374,7 @@
   let sdkLoaded = false;
   let allRoutes = [];
   let selectedRouteIndex = 0;
+  let lastResults = [];
 
   const statusEl = document.getElementById('status');
   const resultCountEl = document.getElementById('resultCount');
@@ -327,8 +382,48 @@
   const mapHintEl = document.getElementById('mapHint');
   const searchBtn = document.getElementById('searchBtn');
   const originInput = document.getElementById('origin');
+  const destinationInput = document.getElementById('destination');
+  const targetCountInput = document.getElementById('targetCount');
+  const radiusInput = document.getElementById('radius');
+  const keywordInput = document.getElementById('keyword');
   const useCurrentLocationBtn = document.getElementById('useCurrentLocationBtn');
   const routeOptionsEl = document.getElementById('routeOptions');
+  const resultsControlsEl = document.getElementById('resultsControls');
+  const sortSelectEl = document.getElementById('sortSelect');
+  const openNowOnlyEl = document.getElementById('openNowOnly');
+
+  const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
+
+  function loadSavedSearch() {
+    try {
+      const raw = localStorage.getItem(SEARCH_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved.origin) originInput.value = saved.origin;
+      if (saved.destination) destinationInput.value = saved.destination;
+      if (saved.targetCount) targetCountInput.value = saved.targetCount;
+      if (saved.radius) radiusInput.value = saved.radius;
+      if (saved.keyword) keywordInput.value = saved.keyword;
+    } catch (err) {
+      console.warn('讀取上次搜尋條件失敗：', err);
+    }
+  }
+
+  function saveSearch() {
+    try {
+      localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify({
+        origin: originInput.value.trim(),
+        destination: destinationInput.value.trim(),
+        targetCount: targetCountInput.value,
+        radius: radiusInput.value,
+        keyword: keywordInput.value.trim()
+      }));
+    } catch (err) {
+      console.warn('儲存搜尋條件失敗：', err);
+    }
+  }
+
+  loadSavedSearch();
 
   function setStatus(msg, kind) {
     statusEl.textContent = msg;
@@ -474,7 +569,8 @@
     'places.location',
     'places.rating',
     'places.userRatingCount',
-    'places.priceLevel'
+    'places.priceLevel',
+    'places.currentOpeningHours.openNow'
   ].join(',');
 
   // 有填關鍵字時：改用 Text Search (New)，比對更接近 Google Maps 打字搜尋的語意/相關性
@@ -577,6 +673,36 @@
     PRICE_LEVEL_VERY_EXPENSIVE: '$$$$'
   };
 
+  const PRICE_RANK = {
+    PRICE_LEVEL_INEXPENSIVE: 1,
+    PRICE_LEVEL_MODERATE: 2,
+    PRICE_LEVEL_EXPENSIVE: 3,
+    PRICE_LEVEL_VERY_EXPENSIVE: 4
+  };
+
+  function applyFiltersAndRender() {
+    if (!lastResults.length) return;
+
+    const targetCount = parseInt(targetCountInput.value, 10) || 10;
+    let list = lastResults.slice();
+
+    if (openNowOnlyEl.checked) {
+      list = list.filter(p => p.currentOpeningHours?.openNow === true);
+    }
+
+    if (sortSelectEl.value === 'price') {
+      list.sort((a, b) => (PRICE_RANK[a.priceLevel] || 99) - (PRICE_RANK[b.priceLevel] || 99));
+    } else {
+      list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    }
+
+    renderResults(list.slice(0, targetCount));
+  }
+
+  sortSelectEl.addEventListener('change', applyFiltersAndRender);
+  openNowOnlyEl.addEventListener('change', applyFiltersAndRender);
+  targetCountInput.addEventListener('change', applyFiltersAndRender);
+
   function renderResults(places) {
     resultCountEl.textContent = `找到 ${places.length} 間餐廳`;
     resultListEl.innerHTML = '';
@@ -608,12 +734,21 @@
         ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
         : '尚無評分';
       const price = PRICE_LABELS[p.priceLevel] || '';
+      const openNow = p.currentOpeningHours?.openNow;
+      const openStatus = openNow === true
+        ? '<span class="open-badge open">營業中</span>'
+        : openNow === false
+        ? '<span class="open-badge closed">已打烊</span>'
+        : '';
+      const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${pos.lat},${pos.lng}${p.id ? `&destination_place_id=${p.id}` : ''}`;
       card.innerHTML = `
         <div class="name">${name}</div>
         <div class="meta">
           <span class="rating">${rating}</span>
           <span>${address}</span>
           ${price ? `<span>${price}</span>` : ''}
+          ${openStatus}
+          <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer">導航 →</a>
         </div>
       `;
       card.addEventListener('click', () => {
@@ -623,14 +758,14 @@
           content: `<strong>${name}</strong><br>${address}`
         }).open(map, marker);
       });
+      card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
       resultListEl.appendChild(card);
     });
   }
 
   async function searchAlongRoute(routeIndex) {
-    const targetCount = parseInt(document.getElementById('targetCount').value, 10) || 10;
-    const radius = parseInt(document.getElementById('radius').value, 10) || 1200;
-    const keyword = document.getElementById('keyword').value.trim();
+    const radius = parseInt(radiusInput.value, 10) || 1200;
+    const keyword = keywordInput.value.trim();
 
     searchBtn.disabled = true;
 
@@ -651,12 +786,10 @@
         await new Promise(r => setTimeout(r, 150));
       }
 
-      const finalResults = Array.from(allResultsMap.values())
-        .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-        .slice(0, targetCount);
-
-      renderResults(finalResults);
-      setStatus(`完成！沿路共找到 ${allResultsMap.size} 間不重複的餐廳，顯示評分最高的 ${finalResults.length} 間。`, 'ok');
+      lastResults = Array.from(allResultsMap.values());
+      resultsControlsEl.hidden = lastResults.length === 0;
+      applyFiltersAndRender();
+      setStatus(`完成！沿路共找到 ${lastResults.length} 間不重複的餐廳。`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
@@ -667,10 +800,12 @@
 
   async function runSearch() {
     const origin = originInput.value.trim();
-    const destination = document.getElementById('destination').value.trim();
+    const destination = destinationInput.value.trim();
 
     if (!GOOGLE_MAPS_API_KEY) return setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
     if (!origin || !destination) return setStatus('請輸入起點與目的地', 'error');
+
+    saveSearch();
 
     searchBtn.disabled = true;
     routeOptionsEl.hidden = true;
