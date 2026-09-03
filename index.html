@@ -467,8 +467,71 @@
     return points;
   }
 
-  // 新版 Places API (New)：POST /v1/places:searchNearby
+  const PLACE_FIELD_MASK = [
+    'places.id',
+    'places.displayName',
+    'places.formattedAddress',
+    'places.location',
+    'places.rating',
+    'places.userRatingCount',
+    'places.priceLevel'
+  ].join(',');
+
+  // 有填關鍵字時：改用 Text Search (New)，比對更接近 Google Maps 打字搜尋的語意/相關性
+  // locationBias 只是「軟性」偏好、不是硬性邊界，所以另外用實際距離過濾回半徑內
+  async function textSearch(location, radius, keyword) {
+    const body = {
+      textQuery: keyword,
+      includedType: 'restaurant',
+      maxResultCount: 20,
+      locationBias: {
+        circle: {
+          center: { latitude: location.lat(), longitude: location.lng() },
+          radius: radius
+        }
+      },
+      rankPreference: 'DISTANCE',
+      languageCode: 'zh-TW'
+    };
+
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+          'X-Goog-FieldMask': PLACE_FIELD_MASK
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn('searchText 回傳非 OK：', res.status, errText);
+        return [];
+      }
+
+      const data = await res.json();
+      const places = data.places || [];
+
+      return places.filter(p => {
+        if (!p.location) return false;
+        const dist = google.maps.geometry.spherical.computeDistanceBetween(
+          location,
+          new google.maps.LatLng(p.location.latitude, p.location.longitude)
+        );
+        return dist <= radius;
+      });
+    } catch (err) {
+      console.warn('searchText 發生錯誤：', err);
+      return [];
+    }
+  }
+
+  // 沒填關鍵字時：單純找附近餐廳，用 searchNearby 的硬性半徑限制
   async function nearbySearch(location, radius, keyword) {
+    if (keyword) return textSearch(location, radius, keyword);
+
     const body = {
       includedTypes: ['restaurant'],
       maxResultCount: 20,
@@ -482,23 +545,13 @@
       languageCode: 'zh-TW'
     };
 
-    const fieldMask = [
-      'places.id',
-      'places.displayName',
-      'places.formattedAddress',
-      'places.location',
-      'places.rating',
-      'places.userRatingCount',
-      'places.priceLevel'
-    ].join(',');
-
     try {
       const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-          'X-Goog-FieldMask': fieldMask
+          'X-Goog-FieldMask': PLACE_FIELD_MASK
         },
         body: JSON.stringify(body)
       });
@@ -510,15 +563,7 @@
       }
 
       const data = await res.json();
-      let places = data.places || [];
-
-      // 新版 searchNearby 沒有 keyword 參數，若使用者有填關鍵字，在前端過濾名稱
-      if (keyword) {
-        places = places.filter(p =>
-          (p.displayName?.text || '').includes(keyword)
-        );
-      }
-      return places;
+      return data.places || [];
     } catch (err) {
       console.warn('searchNearby 發生錯誤：', err);
       return [];
