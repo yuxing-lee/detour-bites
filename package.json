@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A static Google Maps food-along-route finder.",
   "private": true,
+  "type": "module",
   "license": "UNLICENSED",
   "engines": {
     "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
