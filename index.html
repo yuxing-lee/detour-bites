@@ -43,23 +43,6 @@
     height: 100vh;
   }
 
-  @media (max-width: 860px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
-
-    .sidebar { padding-bottom: 84px; }
-
-    #searchBtn {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 20;
-      margin: 0;
-      border-radius: 0;
-      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
-    }
-  }
-
   .sidebar {
     background: var(--panel);
     border-right: 1px solid var(--panel-line);
@@ -376,6 +359,24 @@
     max-width: 320px;
     line-height: 1.5;
   }
+
+  /* 手機版覆寫放最後，確保能蓋過上面的基本樣式（同權重時 CSS 用後者為準） */
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
+
+    .sidebar { padding-bottom: 84px; }
+
+    #searchBtn {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      margin: 0;
+      border-radius: 0;
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    }
+  }
 </style>
 </head>
 <body>
@@ -409,7 +410,7 @@
       </div>
       <div>
         <label for="radius">搜尋半徑 (m)</label>
-        <input id="radius" type="number" value="1200" min="200" step="100" />
+        <input id="radius" type="number" value="100" min="100" step="100" />
       </div>
     </div>
 
@@ -453,6 +454,7 @@
   let map, directionsService, directionsRenderer;
   let placeMarkers = [];
   let sdkLoaded = false;
+  let sdkLoadPromise = null;
   let allRoutes = [];
   let selectedRouteIndex = 0;
   let lastResults = [];
@@ -544,17 +546,23 @@
   });
 
   function loadGoogleMapsSDK() {
-    return new Promise((resolve, reject) => {
-      if (sdkLoaded) return resolve();
+    // 快取「載入中」的 Promise，讓打字觸發的自動完成跟按下搜尋兩邊同時呼叫時
+    // 不會因為腳本還沒載完、sdkLoaded 還是 false，就各自插入重複的 <script>
+    if (sdkLoadPromise) return sdkLoadPromise;
+    sdkLoadPromise = new Promise((resolve, reject) => {
       window.__gmapsInit = () => {
         sdkLoaded = true;
         resolve();
       };
       const script = document.createElement('script');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry,places&callback=__gmapsInit`;
-      script.onerror = () => reject(new Error('Google Maps SDK 載入失敗，請確認 API key 是否正確、且已啟用 Maps JavaScript API / Directions API'));
+      script.onerror = () => {
+        sdkLoadPromise = null;
+        reject(new Error('Google Maps SDK 載入失敗，請確認 API key 是否正確、且已啟用 Maps JavaScript API / Directions API'));
+      };
       document.head.appendChild(script);
     });
+    return sdkLoadPromise;
   }
 
   function debounce(fn, delay) {
@@ -954,11 +962,11 @@
         ? '<span class="open-badge closed">已打烊</span>'
         : '';
       // 帶原本的起點/終點，把這間店當中途停靠點，開起來是一條完整的「起點→餐廳→目的地」路線
-      const waypoint = p.id ? `place_id:${p.id}` : `${pos.lat},${pos.lng}`;
+      // 注意：waypoints 參數不支援 place_id: 前綴（實測會被當成純文字搜尋，顯示「找不到」），只能用經緯度
       const navUrl = `https://www.google.com/maps/dir/?api=1`
         + `&origin=${encodeURIComponent(lastOrigin)}`
         + `&destination=${encodeURIComponent(lastDestination)}`
-        + `&waypoints=${encodeURIComponent(waypoint)}`
+        + `&waypoints=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`
         + `&travelmode=driving`;
       const routeDistanceText = formatRouteDistance(p._routeDistance);
       card.innerHTML = `
