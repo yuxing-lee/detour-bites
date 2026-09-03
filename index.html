@@ -42,6 +42,19 @@
 
   @media (max-width: 860px) {
     .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
+
+    .sidebar { padding-bottom: 84px; }
+
+    #searchBtn {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      margin: 0;
+      border-radius: 0;
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    }
   }
 
   .sidebar {
@@ -126,14 +139,15 @@
     width: auto;
     white-space: nowrap;
     background: transparent;
-    border: 1px solid var(--panel-line);
-    color: var(--paper);
+    border: 1.5px solid var(--amber-dim);
+    color: var(--amber);
     padding: 0 14px;
     font-size: 13px;
+    font-weight: 700;
   }
 
-  .secondary-btn:hover { background: #1f274a; }
-  .secondary-btn:disabled { background: transparent; color: var(--muted); cursor: not-allowed; }
+  .secondary-btn:hover { background: rgba(242, 163, 64, 0.12); }
+  .secondary-btn:disabled { background: transparent; border-color: var(--panel-line); color: var(--muted); cursor: not-allowed; }
 
   .status {
     margin-top: 14px;
@@ -261,7 +275,13 @@
     color: var(--muted);
     margin-top: 4px;
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
+  }
+
+  .place-card .route-distance {
+    color: var(--amber);
+    font-weight: 700;
   }
 
   .place-card .rating { color: var(--amber); }
@@ -271,13 +291,24 @@
   .open-badge.closed { color: #e6816f; }
 
   .place-card .nav-link {
-    color: var(--amber);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 10px;
+    min-height: 40px;
+    background: var(--panel-line);
+    color: var(--paper);
     text-decoration: none;
     font-weight: 600;
-    margin-left: auto;
+    font-size: 13px;
+    border-radius: 6px;
   }
 
-  .place-card .nav-link:hover { text-decoration: underline; }
+  .place-card .nav-link:hover,
+  .place-card .nav-link:active {
+    background: var(--amber-dim);
+    color: #221202;
+  }
 
   .main {
     position: relative;
@@ -346,6 +377,7 @@
       <h2>搜尋結果</h2>
       <div id="resultsControls" class="results-controls" hidden>
         <select id="sortSelect">
+          <option value="distance">順路優先</option>
           <option value="rating">評分高到低</option>
           <option value="price">價格低到高</option>
         </select>
@@ -673,6 +705,13 @@
     PRICE_LEVEL_VERY_EXPENSIVE: '$$$$'
   };
 
+  function formatRouteDistance(meters) {
+    if (typeof meters !== 'number') return '';
+    return meters >= 1000
+      ? `距路線 ${(meters / 1000).toFixed(1)} 公里`
+      : `距路線 ${Math.round(meters)} 公尺`;
+  }
+
   const PRICE_RANK = {
     PRICE_LEVEL_INEXPENSIVE: 1,
     PRICE_LEVEL_MODERATE: 2,
@@ -692,8 +731,10 @@
 
     if (sortSelectEl.value === 'price') {
       list.sort((a, b) => (PRICE_RANK[a.priceLevel] || 99) - (PRICE_RANK[b.priceLevel] || 99));
-    } else {
+    } else if (sortSelectEl.value === 'rating') {
       list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    } else {
+      list.sort((a, b) => (a._routeDistance ?? Infinity) - (b._routeDistance ?? Infinity));
     }
 
     renderResults(list.slice(0, targetCount));
@@ -741,15 +782,17 @@
         ? '<span class="open-badge closed">已打烊</span>'
         : '';
       const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${pos.lat},${pos.lng}${p.id ? `&destination_place_id=${p.id}` : ''}`;
+      const routeDistanceText = formatRouteDistance(p._routeDistance);
       card.innerHTML = `
         <div class="name">${name}</div>
         <div class="meta">
+          ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
           <span class="rating">${rating}</span>
           <span>${address}</span>
           ${price ? `<span>${price}</span>` : ''}
           ${openStatus}
-          <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer">導航 →</a>
         </div>
+        <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer">導航 →</a>
       `;
       card.addEventListener('click', () => {
         map.panTo(pos);
@@ -780,7 +823,17 @@
         setStatus(`搜尋中… (${i + 1}/${samplePoints.length})`);
         const places = await nearbySearch(samplePoints[i], radius, keyword);
         places.forEach(p => {
-          if (p.id && !allResultsMap.has(p.id)) allResultsMap.set(p.id, p);
+          if (!p.id || !p.location) return;
+          const dist = google.maps.geometry.spherical.computeDistanceBetween(
+            samplePoints[i],
+            new google.maps.LatLng(p.location.latitude, p.location.longitude)
+          );
+          // 同一間店可能被多個取樣點找到，保留離路線最近的那個距離
+          const existing = allResultsMap.get(p.id);
+          if (!existing || dist < existing._routeDistance) {
+            p._routeDistance = dist;
+            allResultsMap.set(p.id, p);
+          }
         });
         // 避免過快連續打 API
         await new Promise(r => setTimeout(r, 150));
