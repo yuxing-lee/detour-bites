@@ -280,8 +280,8 @@
 
     <div class="row2">
       <div>
-        <label for="interval">取樣間隔 (km)</label>
-        <input id="interval" type="number" value="8" min="1" step="1" />
+        <label for="targetCount">找幾間</label>
+        <input id="targetCount" type="number" value="10" min="1" max="50" step="1" />
       </div>
       <div>
         <label for="radius">搜尋半徑 (m)</label>
@@ -313,6 +313,7 @@
 
 <script type="module">
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const SAMPLE_INTERVAL_KM = 8;
 
   let map, directionsService, directionsRenderer;
   let placeMarkers = [];
@@ -582,7 +583,7 @@
   }
 
   async function searchAlongRoute(routeIndex) {
-    const intervalKm = parseFloat(document.getElementById('interval').value) || 8;
+    const targetCount = parseInt(document.getElementById('targetCount').value, 10) || 10;
     const radius = parseInt(document.getElementById('radius').value, 10) || 1200;
     const keyword = document.getElementById('keyword').value.trim();
 
@@ -590,7 +591,7 @@
 
     try {
       const path = allRoutes[routeIndex].overview_path;
-      const samplePoints = samplePointsAlongPath(path, intervalKm);
+      const samplePoints = samplePointsAlongPath(path, SAMPLE_INTERVAL_KM);
 
       setStatus(`路線取得完成，沿路 ${samplePoints.length} 個點搜尋中…`);
 
@@ -606,10 +607,11 @@
       }
 
       const finalResults = Array.from(allResultsMap.values())
-        .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+        .slice(0, targetCount);
 
       renderResults(finalResults);
-      setStatus(`完成！共取樣 ${samplePoints.length} 個點，找到 ${finalResults.length} 間不重複的餐廳。`, 'ok');
+      setStatus(`完成！沿路共找到 ${allResultsMap.size} 間不重複的餐廳，顯示評分最高的 ${finalResults.length} 間。`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
