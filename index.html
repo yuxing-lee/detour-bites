@@ -307,6 +307,111 @@
     margin-top: 0;
   }
 
+  .manage-eaten-btn {
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 13, 26, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--panel-line);
+    flex-shrink: 0;
+  }
+
+  .modal-header h3 {
+    font-size: 16px;
+    color: var(--paper);
+  }
+
+  .modal-close {
+    margin: 0;
+    width: auto;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .modal-close:hover { color: var(--paper); }
+
+  .modal-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--panel-line);
+    flex-shrink: 0;
+  }
+
+  .modal-toolbar .secondary-btn {
+    flex: 1;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .modal-import-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .modal-status {
+    padding: 0 18px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .modal-status.error { color: #e6816f; }
+  .modal-status.ok { color: var(--good); }
+
+  .eaten-list {
+    overflow-y: auto;
+    padding: 12px 18px 18px;
+  }
+
+  .eaten-list-item {
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+
+  .eaten-list-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
   .discover-result-empty {
     margin-top: 10px;
     font-size: 12px;
@@ -581,6 +686,8 @@
 
     <div class="divider"></div>
 
+    <button type="button" id="manageEatenBtn" class="manage-eaten-btn secondary-btn">📋 管理吃過清單</button>
+
     <div class="results">
       <h2>搜尋結果</h2>
       <div id="discoverBox" class="discover-box" hidden>
@@ -612,6 +719,24 @@
   <div class="main">
     <div class="map-hint" id="mapHint">按下搜尋，地圖會顯示在這裡。</div>
     <div id="map"></div>
+  </div>
+</div>
+
+<div id="eatenModalOverlay" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eatenModalTitle">
+    <div class="modal-header">
+      <h3 id="eatenModalTitle">吃過清單</h3>
+      <button type="button" id="closeEatenModalBtn" class="modal-close" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-toolbar">
+      <button type="button" id="exportEatenBtn" class="secondary-btn">⬇️ 匯出 JSON</button>
+      <label class="secondary-btn modal-import-label">
+        ⬆️ 匯入 JSON
+        <input type="file" id="importEatenInput" accept="application/json" hidden />
+      </label>
+    </div>
+    <div id="eatenModalStatus" class="modal-status" hidden></div>
+    <div id="eatenListEl" class="eaten-list"></div>
   </div>
 </div>
 
@@ -652,6 +777,13 @@
   const discoverBtn = document.getElementById('discoverBtn');
   const includeEatenCheckbox = document.getElementById('includeEatenCheckbox');
   const discoverResultEl = document.getElementById('discoverResult');
+  const manageEatenBtn = document.getElementById('manageEatenBtn');
+  const eatenModalOverlayEl = document.getElementById('eatenModalOverlay');
+  const closeEatenModalBtn = document.getElementById('closeEatenModalBtn');
+  const eatenListEl = document.getElementById('eatenListEl');
+  const eatenModalStatusEl = document.getElementById('eatenModalStatus');
+  const exportEatenBtn = document.getElementById('exportEatenBtn');
+  const importEatenInput = document.getElementById('importEatenInput');
 
   const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
   const EATEN_STORAGE_KEY = 'detour-bites:eatenPlaces';
@@ -692,12 +824,20 @@
   function setEatenRating(id, name, rating) {
     eatenPlaces.set(id, { name, rating });
     saveEatenPlaces();
+    updateManageEatenBtnLabel();
   }
 
   function clearEaten(id) {
     eatenPlaces.delete(id);
     saveEatenPlaces();
+    updateManageEatenBtnLabel();
   }
+
+  function updateManageEatenBtnLabel() {
+    manageEatenBtn.textContent = `📋 管理吃過清單（${eatenPlaces.size}）`;
+  }
+
+  updateManageEatenBtnLabel();
 
   function starRatingHTML(id) {
     const rating = eatenRating(id);
@@ -720,13 +860,15 @@
   }
 
   // 掛在 slotEl 底下渲染星星評分小工具並綁定事件；點星星＝標記已吃過＋設定評分，點 ✕＝取消標記
-  function wireEatenWidget(slotEl, id, name) {
+  // onChange 是選填的額外回呼，給需要在評分變動後重繪外層清單的呼叫端（例如管理清單）用
+  function wireEatenWidget(slotEl, id, name, onChange) {
     slotEl.innerHTML = eatenWidgetHTML(id);
     slotEl.querySelectorAll('.star-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         setEatenRating(id, name, parseInt(btn.dataset.value, 10));
-        wireEatenWidget(slotEl, id, name);
+        wireEatenWidget(slotEl, id, name, onChange);
+        if (onChange) onChange();
       });
     });
     const clearBtn = slotEl.querySelector('.clear-eaten-btn');
@@ -734,10 +876,114 @@
       clearBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         clearEaten(id);
-        wireEatenWidget(slotEl, id, name);
+        wireEatenWidget(slotEl, id, name, onChange);
+        if (onChange) onChange();
       });
     }
   }
+
+  function setEatenModalStatus(msg, kind) {
+    eatenModalStatusEl.textContent = msg || '';
+    eatenModalStatusEl.className = 'modal-status' + (kind ? ' ' + kind : '');
+    eatenModalStatusEl.hidden = !msg;
+  }
+
+  // 「管理吃過清單」彈窗：列出所有標記過的餐廳，可直接改評分或清除，
+  // 不受目前搜尋結果限制（就算這次路線沒經過那間店，也能在這裡補評分）
+  function renderEatenList() {
+    const entries = Array.from(eatenPlaces.entries());
+    eatenListEl.innerHTML = '';
+
+    if (!entries.length) {
+      eatenListEl.innerHTML = '<div class="review-empty">目前沒有標記任何已吃過的餐廳，在餐廳卡片上點星星就可以加入。</div>';
+      return;
+    }
+
+    entries.sort((a, b) => (b[1].rating || 0) - (a[1].rating || 0) || (a[1].name || '').localeCompare(b[1].name || '', 'zh-Hant'));
+
+    entries.forEach(([id, entry]) => {
+      const item = document.createElement('div');
+      item.className = 'eaten-list-item';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'eaten-list-name';
+      nameEl.textContent = entry.name || '(未命名)';
+
+      const slot = document.createElement('div');
+      slot.className = 'eaten-widget-slot';
+
+      item.appendChild(nameEl);
+      item.appendChild(slot);
+      eatenListEl.appendChild(item);
+
+      wireEatenWidget(slot, id, entry.name, renderEatenList);
+    });
+  }
+
+  function openEatenModal() {
+    setEatenModalStatus('');
+    renderEatenList();
+    eatenModalOverlayEl.hidden = false;
+  }
+
+  function closeEatenModal() {
+    eatenModalOverlayEl.hidden = true;
+  }
+
+  manageEatenBtn.addEventListener('click', openEatenModal);
+  closeEatenModalBtn.addEventListener('click', closeEatenModal);
+  eatenModalOverlayEl.addEventListener('click', (e) => {
+    if (e.target === eatenModalOverlayEl) closeEatenModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !eatenModalOverlayEl.hidden) closeEatenModal();
+  });
+
+  exportEatenBtn.addEventListener('click', () => {
+    const data = Array.from(eatenPlaces, ([id, entry]) => ({ id, name: entry.name, rating: entry.rating }));
+    if (!data.length) {
+      setEatenModalStatus('目前沒有資料可以匯出', 'error');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `detour-bites-eaten-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setEatenModalStatus(`已匯出 ${data.length} 筆資料`, 'ok');
+  });
+
+  importEatenInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const arr = JSON.parse(text);
+      if (!Array.isArray(arr)) throw new Error('內容不是陣列');
+
+      let imported = 0;
+      arr.forEach(item => {
+        if (!item || typeof item.id !== 'string' || !item.id) return;
+        const rating = Math.max(0, Math.min(5, Math.round(Number(item.rating)) || 0));
+        eatenPlaces.set(item.id, { name: typeof item.name === 'string' ? item.name : '', rating });
+        imported++;
+      });
+
+      saveEatenPlaces();
+      updateManageEatenBtnLabel();
+      renderEatenList();
+      setEatenModalStatus(`已匯入 ${imported} 筆吃過清單資料`, 'ok');
+    } catch (err) {
+      console.warn('匯入吃過清單失敗：', err);
+      setEatenModalStatus('匯入失敗，請確認檔案是先前用「匯出」產生的 JSON', 'error');
+    } finally {
+      importEatenInput.value = '';
+    }
+  });
 
   const EATEN_GOOD_RATING_THRESHOLD = 4;
   // 勾選「包含吃過的高評價餐廳」時，固定有這個比例的機率會從舊愛裡抽，其餘機率抽新店，
@@ -1378,6 +1624,7 @@
   }
 
   let discoverMarker = null;
+  let lastDiscoverPickId = null;
 
   function clearDiscoverMarker() {
     if (discoverMarker) {
@@ -1455,6 +1702,11 @@
       candidates = candidates.filter(p => p.currentOpeningHours?.openNow === true);
     }
 
+    // 避免連續兩次抽到同一間；但如果排除後就沒候選了（篩到只剩它自己），就不排除
+    if (lastDiscoverPickId && candidates.some(p => p.id !== lastDiscoverPickId)) {
+      candidates = candidates.filter(p => p.id !== lastDiscoverPickId);
+    }
+
     const poolNew = candidates.filter(p => !isEaten(p.id));
     const poolOld = candidates.filter(p => isEaten(p.id) && eatenRating(p.id) >= EATEN_GOOD_RATING_THRESHOLD);
 
@@ -1475,6 +1727,7 @@
       return;
     }
 
+    lastDiscoverPickId = picked.id;
     renderDiscoverResult(picked);
   });
 
@@ -1545,6 +1798,7 @@
       discoverBoxEl.hidden = lastResults.length === 0;
       clearDiscoverMarker();
       discoverResultEl.innerHTML = '';
+      lastDiscoverPickId = null;
       applyFiltersAndRender();
       if (dishKeyword) {
         setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳。`, 'ok');
