@@ -278,6 +278,78 @@
     accent-color: var(--amber);
   }
 
+  .discover-box {
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+  }
+
+  .discover-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--paper);
+  }
+
+  .discover-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+
+  .discover-box .checkbox-label {
+    margin: 10px 0;
+  }
+
+  .discover-btn {
+    margin-top: 0;
+  }
+
+  .discover-result-empty {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .discover-card {
+    margin-top: 12px;
+    margin-bottom: 0;
+    border-color: var(--good);
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .card-actions .review-toggle,
+  .card-actions .eaten-toggle {
+    margin-top: 0;
+  }
+
+  .eaten-toggle {
+    width: auto;
+    background: transparent;
+    border: 1px solid var(--panel-line);
+    color: var(--muted);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .eaten-toggle:hover { background: #1f274a; color: var(--paper); }
+
+  .eaten-toggle.active {
+    border-color: var(--good);
+    color: var(--good);
+  }
+
   .place-card {
     background: #0f1428;
     border: 1px solid var(--panel-line);
@@ -491,6 +563,16 @@
 
     <div class="results">
       <h2>搜尋結果</h2>
+      <div id="discoverBox" class="discover-box" hidden>
+        <div class="discover-title">🎲 踩新點</div>
+        <div class="discover-sub">從目前搜尋結果中（依你的關鍵字/半徑等條件過濾後）隨機推薦一間，不用自己選</div>
+        <label class="checkbox-label">
+          <input type="checkbox" id="includeEatenCheckbox" />
+          包含之前吃過的餐廳
+        </label>
+        <button type="button" id="discoverBtn" class="discover-btn">🎲 隨機挑一間</button>
+        <div id="discoverResult"></div>
+      </div>
       <div id="resultsControls" class="results-controls" hidden>
         <select id="sortSelect">
           <option value="distance">順路優先</option>
@@ -546,8 +628,56 @@
   const resultsControlsEl = document.getElementById('resultsControls');
   const sortSelectEl = document.getElementById('sortSelect');
   const openNowOnlyEl = document.getElementById('openNowOnly');
+  const discoverBoxEl = document.getElementById('discoverBox');
+  const discoverBtn = document.getElementById('discoverBtn');
+  const includeEatenCheckbox = document.getElementById('includeEatenCheckbox');
+  const discoverResultEl = document.getElementById('discoverResult');
 
   const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
+  const EATEN_STORAGE_KEY = 'detour-bites:eatenPlaces';
+
+  function loadEatenPlaces() {
+    try {
+      const raw = localStorage.getItem(EATEN_STORAGE_KEY);
+      if (!raw) return new Map();
+      const arr = JSON.parse(raw);
+      return new Map(arr.map(item => [item.id, item.name]));
+    } catch (err) {
+      console.warn('讀取已吃過清單失敗：', err);
+      return new Map();
+    }
+  }
+
+  function saveEatenPlaces() {
+    try {
+      localStorage.setItem(EATEN_STORAGE_KEY, JSON.stringify(
+        Array.from(eatenPlaces, ([id, name]) => ({ id, name }))
+      ));
+    } catch (err) {
+      console.warn('儲存已吃過清單失敗：', err);
+    }
+  }
+
+  let eatenPlaces = loadEatenPlaces();
+
+  function isEaten(id) {
+    return eatenPlaces.has(id);
+  }
+
+  function toggleEaten(id, name) {
+    if (eatenPlaces.has(id)) eatenPlaces.delete(id);
+    else eatenPlaces.set(id, name);
+    saveEatenPlaces();
+  }
+
+  function eatenButtonLabel(id) {
+    return isEaten(id) ? '✅ 已吃過' : '🍽 標記已吃過';
+  }
+
+  function updateEatenButton(btn, id) {
+    btn.textContent = eatenButtonLabel(id);
+    btn.classList.toggle('active', isEaten(id));
+  }
 
   function loadSavedSearch() {
     try {
@@ -1121,7 +1251,10 @@
         </div>
         ${matchedSnippet ? `<div class="review-match">💬 評論提到：「${escapeHtml(matchedSnippet)}」</div>` : ''}
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
-        <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+        <div class="card-actions">
+          <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+          <button type="button" class="eaten-toggle ${isEaten(p.id) ? 'active' : ''}">${eatenButtonLabel(p.id)}</button>
+        </div>
         <div class="review-list" hidden></div>
       `;
       card.addEventListener('click', () => {
@@ -1132,6 +1265,13 @@
         }).open(map, marker);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
+
+      const eatenToggleBtn = card.querySelector('.eaten-toggle');
+      eatenToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleEaten(p.id, name);
+        updateEatenButton(eatenToggleBtn, p.id);
+      });
 
       const reviewToggleBtn = card.querySelector('.review-toggle');
       const reviewListEl = card.querySelector('.review-list');
@@ -1154,6 +1294,103 @@
       resultListEl.appendChild(card);
     });
   }
+
+  let discoverMarker = null;
+
+  function clearDiscoverMarker() {
+    if (discoverMarker) {
+      discoverMarker.setMap(null);
+      discoverMarker = null;
+    }
+  }
+
+  // 從目前搜尋結果（已依關鍵字/半徑等條件過濾）中隨機挑一間，可選是否排除已標記「吃過」的店家
+  function renderDiscoverResult(p) {
+    const pos = { lat: p.location.latitude, lng: p.location.longitude };
+    const name = p.displayName?.text || '(未命名)';
+    const address = p.formattedAddress || '';
+    const rating = p.rating
+      ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
+      : '尚無評分';
+    const price = PRICE_LABELS[p.priceLevel] || '';
+    const openNow = p.currentOpeningHours?.openNow;
+    const openStatus = openNow === true
+      ? '<span class="open-badge open">營業中</span>'
+      : openNow === false
+      ? '<span class="open-badge closed">已打烊</span>'
+      : '';
+    const routeDistanceText = formatRouteDistance(p._routeDistance);
+    const navUrl = `https://www.google.com/maps/dir/?api=1`
+      + `&origin=${encodeURIComponent(lastOrigin)}`
+      + `&destination=${encodeURIComponent(lastDestination)}`
+      + `&waypoints=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`
+      + `&travelmode=driving`;
+
+    discoverResultEl.innerHTML = `
+      <div class="place-card discover-card">
+        <div class="name">🎯 ${escapeHtml(name)}</div>
+        <div class="meta">
+          ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
+          <span class="rating">${rating}</span>
+          <span>${escapeHtml(address)}</span>
+          ${price ? `<span>${price}</span>` : ''}
+          ${openStatus}
+        </div>
+        <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
+        <div class="card-actions">
+          <button type="button" class="eaten-toggle ${isEaten(p.id) ? 'active' : ''}">${eatenButtonLabel(p.id)}</button>
+        </div>
+      </div>
+    `;
+
+    const eatenToggleBtn = discoverResultEl.querySelector('.eaten-toggle');
+    eatenToggleBtn.addEventListener('click', () => {
+      toggleEaten(p.id, name);
+      updateEatenButton(eatenToggleBtn, p.id);
+    });
+
+    clearDiscoverMarker();
+    discoverMarker = new google.maps.Marker({
+      position: pos,
+      map,
+      title: name,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 9,
+        fillColor: '#6fbf8b',
+        fillOpacity: 1,
+        strokeColor: '#12172b',
+        strokeWeight: 2
+      },
+      zIndex: 999
+    });
+    map.panTo(pos);
+    map.setZoom(16);
+    new google.maps.InfoWindow({
+      content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+    }).open(map, discoverMarker);
+  }
+
+  discoverBtn.addEventListener('click', () => {
+    if (!lastResults.length) return;
+
+    let pool = lastResults.slice();
+    if (openNowOnlyEl.checked) {
+      pool = pool.filter(p => p.currentOpeningHours?.openNow === true);
+    }
+    if (!includeEatenCheckbox.checked) {
+      pool = pool.filter(p => !isEaten(p.id));
+    }
+
+    if (!pool.length) {
+      clearDiscoverMarker();
+      discoverResultEl.innerHTML = '<div class="discover-result-empty">目前條件下沒有符合的餐廳可以推薦，試試勾選「包含之前吃過的餐廳」。</div>';
+      return;
+    }
+
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    renderDiscoverResult(picked);
+  });
 
   async function searchAlongRoute(routeIndex) {
     const radius = parseInt(radiusInput.value, 10) || 1200;
@@ -1219,6 +1456,9 @@
       }
 
       resultsControlsEl.hidden = lastResults.length === 0;
+      discoverBoxEl.hidden = lastResults.length === 0;
+      clearDiscoverMarker();
+      discoverResultEl.innerHTML = '';
       applyFiltersAndRender();
       if (dishKeyword) {
         setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳。`, 'ok');
