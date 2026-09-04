@@ -585,7 +585,7 @@
       <h2>搜尋結果</h2>
       <div id="discoverBox" class="discover-box" hidden>
         <div class="discover-title">🎲 踩新點</div>
-        <div class="discover-sub">從目前搜尋結果中（依你的關鍵字/半徑等條件過濾後）隨機推薦一間：沒吃過的餐廳都有機會抽到；吃過的餐廳只有評分 4★／5★ 才可能出現，星星越高機率越高，3★ 以下不會再被抽到。</div>
+        <div class="discover-sub">從目前搜尋結果中（依你的關鍵字/半徑等條件過濾後）隨機推薦一間。勾選下方選項時，固定有 25% 機率抽到吃過的高評價餐廳（星星越高越容易雀屏中選）、75% 機率抽到還沒吃過的新店；不勾選則固定只抽新店。3★ 以下的餐廳一律不會出現，不受路線上舊餐廳數量多寡影響比例。</div>
         <label class="checkbox-label">
           <input type="checkbox" id="includeEatenCheckbox" />
           包含吃過的高評價餐廳（4★以上）
@@ -740,8 +740,12 @@
   }
 
   const EATEN_GOOD_RATING_THRESHOLD = 4;
+  // 勾選「包含吃過的高評價餐廳」時，固定有這個比例的機率會從舊愛裡抽，其餘機率抽新店，
+  // 不受這次搜尋路線上剛好有幾間舊餐廳影響（避免路線上舊愛一多就蓋過新店機會，或一間都沒有時 checkbox 形同虛設）
+  const OLD_FAVORITE_RATIO = 0.25;
 
-  // 踩新點抽選權重：沒吃過＝基準權重 1；吃過且評分 4★／5★ 時，每多一顆星機率翻倍（2^(星星-3)）；
+  // 同一個池子（舊愛池或新店池）內部要抽哪一間時用的權重：
+  // 沒吃過＝基準權重 1；吃過且評分 4★／5★ 時，每多一顆星機率翻倍（2^(星星-3)）；
   // 吃過但評分 3★ 以下（含尚未評分）一律不列入隨機清單
   function placeWeight(p) {
     if (!isEaten(p.id)) return 1;
@@ -1446,24 +1450,31 @@
   discoverBtn.addEventListener('click', () => {
     if (!lastResults.length) return;
 
-    let pool = lastResults.slice();
+    let candidates = lastResults.slice();
     if (openNowOnlyEl.checked) {
-      pool = pool.filter(p => p.currentOpeningHours?.openNow === true);
-    }
-    // 吃過但評分 3★ 以下（含尚未評分）一律不進隨機清單，不受 checkbox 影響
-    pool = pool.filter(p => !isEaten(p.id) || eatenRating(p.id) >= EATEN_GOOD_RATING_THRESHOLD);
-    if (!includeEatenCheckbox.checked) {
-      pool = pool.filter(p => !isEaten(p.id));
+      candidates = candidates.filter(p => p.currentOpeningHours?.openNow === true);
     }
 
-    if (!pool.length) {
+    const poolNew = candidates.filter(p => !isEaten(p.id));
+    const poolOld = candidates.filter(p => isEaten(p.id) && eatenRating(p.id) >= EATEN_GOOD_RATING_THRESHOLD);
+
+    // 先用固定比例（OLD_FAVORITE_RATIO）決定這次要從舊愛池還是新店池抽，
+    // 池子裡沒東西時 fallback 到另一個池子，兩個都沒東西才算沒結果
+    let picked = null;
+    if (includeEatenCheckbox.checked && poolOld.length && (!poolNew.length || Math.random() < OLD_FAVORITE_RATIO)) {
+      picked = weightedRandomPick(poolOld);
+    } else if (poolNew.length) {
+      picked = weightedRandomPick(poolNew);
+    } else if (includeEatenCheckbox.checked) {
+      picked = weightedRandomPick(poolOld);
+    }
+
+    if (!picked) {
       clearDiscoverMarker();
       discoverResultEl.innerHTML = '<div class="discover-result-empty">目前條件下沒有符合的餐廳可以推薦，試試勾選「包含吃過的高評價餐廳」。</div>';
       return;
     }
 
-    const picked = weightedRandomPick(pool);
-    if (!picked) return;
     renderDiscoverResult(picked);
   });
 
