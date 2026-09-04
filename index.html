@@ -1841,49 +1841,55 @@
 
       wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
 
-      const reviewToggleBtn = card.querySelector('.review-toggle');
-      const reviewListEl = card.querySelector('.review-list');
-      reviewToggleBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!reviewListEl.hidden) {
-          reviewListEl.hidden = true;
-          return;
-        }
-        if (!p._reviews) {
-          reviewToggleBtn.textContent = '載入評論中…';
-          reviewToggleBtn.disabled = true;
-          p._reviews = await fetchPlaceReviews(p.id);
-          reviewToggleBtn.disabled = false;
-        }
-        renderReviewList(reviewListEl, p._reviews);
-        reviewListEl.hidden = false;
-        reviewToggleBtn.textContent = `查看評論 (${p._reviews.length})`;
-      });
-
-      const aiSummaryBtn = card.querySelector('.ai-summary-toggle');
-      const aiSummaryEl = card.querySelector('.ai-summary');
-      if (aiSummaryBtn) {
-        aiSummaryBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (!aiSummaryEl.hidden) {
-            aiSummaryEl.hidden = true;
-            return;
-          }
-          if (!p._aiSummary) {
-            aiSummaryBtn.textContent = '摘要生成中…';
-            aiSummaryBtn.disabled = true;
-            if (!p._reviews) p._reviews = await fetchPlaceReviews(p.id);
-            p._aiSummary = await summarizePlaceReviews(name, p._reviews);
-            aiSummaryBtn.disabled = false;
-            aiSummaryBtn.textContent = '✨ AI 摘要';
-          }
-          aiSummaryEl.textContent = p._aiSummary;
-          aiSummaryEl.hidden = false;
-        });
-      }
+      wireReviewAndAiActions(card, p, name);
 
       resultListEl.appendChild(card);
     });
+  }
+
+  // 「查看評論」＋「✨ AI 摘要」按鈕的共用綁定邏輯，讓一般搜尋結果卡片跟「踩新點」隨機推薦卡片
+  // 都能查看評論、生成 AI 摘要，行為完全一致
+  function wireReviewAndAiActions(container, p, name) {
+    const reviewToggleBtn = container.querySelector('.review-toggle');
+    const reviewListEl = container.querySelector('.review-list');
+    reviewToggleBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!reviewListEl.hidden) {
+        reviewListEl.hidden = true;
+        return;
+      }
+      if (!p._reviews) {
+        reviewToggleBtn.textContent = '載入評論中…';
+        reviewToggleBtn.disabled = true;
+        p._reviews = await fetchPlaceReviews(p.id);
+        reviewToggleBtn.disabled = false;
+      }
+      renderReviewList(reviewListEl, p._reviews);
+      reviewListEl.hidden = false;
+      reviewToggleBtn.textContent = `查看評論 (${p._reviews.length})`;
+    });
+
+    const aiSummaryBtn = container.querySelector('.ai-summary-toggle');
+    const aiSummaryEl = container.querySelector('.ai-summary');
+    if (aiSummaryBtn) {
+      aiSummaryBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!aiSummaryEl.hidden) {
+          aiSummaryEl.hidden = true;
+          return;
+        }
+        if (!p._aiSummary) {
+          aiSummaryBtn.textContent = '摘要生成中…';
+          aiSummaryBtn.disabled = true;
+          if (!p._reviews) p._reviews = await fetchPlaceReviews(p.id);
+          p._aiSummary = await summarizePlaceReviews(name, p._reviews);
+          aiSummaryBtn.disabled = false;
+          aiSummaryBtn.textContent = '✨ AI 摘要';
+        }
+        aiSummaryEl.textContent = p._aiSummary;
+        aiSummaryEl.hidden = false;
+      });
+    }
   }
 
   let discoverMarker = null;
@@ -1917,6 +1923,7 @@
       + `&destination=${encodeURIComponent(lastDestination)}`
       + `&waypoints=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`
       + `&travelmode=driving`;
+    const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
 
     discoverResultEl.innerHTML = `
       <div class="place-card discover-card">
@@ -1929,11 +1936,18 @@
           ${openStatus}
         </div>
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
+        <div class="card-actions">
+          <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+          ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
+        </div>
         <div class="eaten-widget-slot"></div>
+        <div class="ai-summary" hidden></div>
+        <div class="review-list" hidden></div>
       </div>
     `;
 
     wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name);
+    wireReviewAndAiActions(discoverResultEl, p, name);
 
     clearDiscoverMarker();
     discoverMarker = new google.maps.Marker({
