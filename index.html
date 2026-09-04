@@ -1628,7 +1628,7 @@
     const disableThinking = !isGemmaModel(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
     const generationConfig = nativeJsonMode
       ? { responseMimeType: 'application/json', responseSchema: schema, ...disableThinking }
-      : { maxOutputTokens: 500, ...disableThinking };
+      : { maxOutputTokens: 800, ...disableThinking };
 
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
       method: 'POST',
@@ -1644,8 +1644,14 @@
     }
 
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error(`[${model}] Gemini 沒有回傳內容`);
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
+    if (!text) throw new Error(`[${model}] Gemini 沒有回傳內容（finishReason: ${candidate?.finishReason}）`);
+    // finishReason 是 MAX_TOKENS 代表輸出被 maxOutputTokens 腰斬，text 只是半截句子，
+    // 不能當成功結果用；丟錯讓 callGemini 換下一個 model 重試，而不是把殘句顯示給使用者看
+    if (candidate.finishReason === 'MAX_TOKENS') {
+      throw new Error(`[${model}] Gemini 回傳被 maxOutputTokens 截斷（finishReason: MAX_TOKENS）`);
+    }
     if (!schema) return text.trim();
     return JSON.parse(nativeJsonMode ? text : stripJsonCodeFence(text));
   }
