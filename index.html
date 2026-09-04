@@ -1174,8 +1174,8 @@
         const main = prediction.mainText?.text || prediction.text?.text || '';
         const secondary = prediction.secondaryText?.text || '';
         item.innerHTML = `
-          <div class="main">${main}</div>
-          ${secondary ? `<div class="secondary">${secondary}</div>` : ''}
+          <div class="main">${escapeHtml(main)}</div>
+          ${secondary ? `<div class="secondary">${escapeHtml(secondary)}</div>` : ''}
         `;
         // 用 mousedown 而不是 click，才能搶在 input 的 blur 事件把清單關掉之前完成選取
         item.addEventListener('mousedown', (e) => {
@@ -1296,7 +1296,7 @@
       card.innerHTML = `
         <input type="radio" name="routeChoice" value="${i}" ${i === selectedRouteIndex ? 'checked' : ''} />
         <div>
-          <div class="route-option-title">路線 ${i + 1}${route.summary ? '：' + route.summary : ''}</div>
+          <div class="route-option-title">路線 ${i + 1}${route.summary ? '：' + escapeHtml(route.summary) : ''}</div>
           <div class="route-option-meta">${summarizeRoute(route)}</div>
         </div>
       `;
@@ -1556,13 +1556,13 @@
       });
       if (!res.ok) {
         console.warn('取得評論失敗：', res.status, await res.text());
-        return [];
+        return null;
       }
       const data = await res.json();
       return data.reviews || [];
     } catch (err) {
       console.warn('取得評論發生錯誤：', err);
-      return [];
+      return null;
     }
   }
 
@@ -1676,7 +1676,7 @@
       return await callGemini(prompt);
     } catch (err) {
       console.warn('Gemini 評論摘要失敗：', err);
-      return 'AI 摘要暫時無法使用，請稍後再試。';
+      return null;
     }
   }
 
@@ -1812,11 +1812,11 @@
       const matchedSnippet = p._matchedReview ? reviewSnippet(p._matchedReview, p._matchedKeyword || '') : '';
       const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
       card.innerHTML = `
-        <div class="name">${name}</div>
+        <div class="name">${escapeHtml(name)}</div>
         <div class="meta">
           ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
           <span class="rating">${rating}</span>
-          <span>${address}</span>
+          <span>${escapeHtml(address)}</span>
           ${price ? `<span>${price}</span>` : ''}
           ${openStatus}
         </div>
@@ -1834,56 +1834,82 @@
         map.panTo(pos);
         map.setZoom(15);
         new google.maps.InfoWindow({
-          content: `<strong>${name}</strong><br>${address}`
+          content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
         }).open(map, marker);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
 
       wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
 
-      const reviewToggleBtn = card.querySelector('.review-toggle');
-      const reviewListEl = card.querySelector('.review-list');
-      reviewToggleBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!reviewListEl.hidden) {
-          reviewListEl.hidden = true;
-          return;
-        }
-        if (!p._reviews) {
-          reviewToggleBtn.textContent = '載入評論中…';
-          reviewToggleBtn.disabled = true;
-          p._reviews = await fetchPlaceReviews(p.id);
-          reviewToggleBtn.disabled = false;
-        }
-        renderReviewList(reviewListEl, p._reviews);
-        reviewListEl.hidden = false;
-        reviewToggleBtn.textContent = `查看評論 (${p._reviews.length})`;
-      });
-
-      const aiSummaryBtn = card.querySelector('.ai-summary-toggle');
-      const aiSummaryEl = card.querySelector('.ai-summary');
-      if (aiSummaryBtn) {
-        aiSummaryBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (!aiSummaryEl.hidden) {
-            aiSummaryEl.hidden = true;
-            return;
-          }
-          if (!p._aiSummary) {
-            aiSummaryBtn.textContent = '摘要生成中…';
-            aiSummaryBtn.disabled = true;
-            if (!p._reviews) p._reviews = await fetchPlaceReviews(p.id);
-            p._aiSummary = await summarizePlaceReviews(name, p._reviews);
-            aiSummaryBtn.disabled = false;
-            aiSummaryBtn.textContent = '✨ AI 摘要';
-          }
-          aiSummaryEl.textContent = p._aiSummary;
-          aiSummaryEl.hidden = false;
-        });
-      }
+      wireReviewAndAiActions(card, p, name);
 
       resultListEl.appendChild(card);
     });
+  }
+
+  // 「查看評論」＋「✨ AI 摘要」按鈕的共用綁定邏輯，讓一般搜尋結果卡片跟「踩新點」隨機推薦卡片
+  // 都能查看評論、生成 AI 摘要，行為完全一致
+  function wireReviewAndAiActions(container, p, name) {
+    // 用 :not(.ai-summary-toggle) 明確排除 AI 摘要按鈕，不依賴兩個按鈕在 DOM 裡的先後順序
+    const reviewToggleBtn = container.querySelector('.review-toggle:not(.ai-summary-toggle)');
+    const reviewListEl = container.querySelector('.review-list');
+    reviewToggleBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!reviewListEl.hidden) {
+        reviewListEl.hidden = true;
+        return;
+      }
+      if (!p._reviews) {
+        reviewToggleBtn.textContent = '載入評論中…';
+        reviewToggleBtn.disabled = true;
+        const reviews = await fetchPlaceReviews(p.id);
+        reviewToggleBtn.disabled = false;
+        // fetchPlaceReviews 失敗時回傳 null；不快取失敗結果，讓使用者下次點擊可以重試，
+        // 而不是被永遠卡在「暫時性錯誤」造成的空清單
+        if (reviews === null) {
+          reviewListEl.innerHTML = '<div class="review-empty">評論載入失敗，請稍後再試</div>';
+          reviewListEl.hidden = false;
+          reviewToggleBtn.textContent = '查看評論';
+          return;
+        }
+        p._reviews = reviews;
+      }
+      renderReviewList(reviewListEl, p._reviews);
+      reviewListEl.hidden = false;
+      reviewToggleBtn.textContent = `查看評論 (${p._reviews.length})`;
+    });
+
+    const aiSummaryBtn = container.querySelector('.ai-summary-toggle');
+    const aiSummaryEl = container.querySelector('.ai-summary');
+    if (aiSummaryBtn) {
+      aiSummaryBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!aiSummaryEl.hidden) {
+          aiSummaryEl.hidden = true;
+          return;
+        }
+        if (!p._aiSummary) {
+          aiSummaryBtn.textContent = '摘要生成中…';
+          aiSummaryBtn.disabled = true;
+          if (!p._reviews) {
+            const reviews = await fetchPlaceReviews(p.id);
+            if (reviews !== null) p._reviews = reviews;
+          }
+          const summary = await summarizePlaceReviews(name, p._reviews || []);
+          aiSummaryBtn.disabled = false;
+          aiSummaryBtn.textContent = '✨ AI 摘要';
+          // summarizePlaceReviews 失敗時回傳 null；同樣不快取，讓下次點擊可以重新生成
+          if (summary === null) {
+            aiSummaryEl.textContent = 'AI 摘要暫時無法使用，請稍後再試。';
+            aiSummaryEl.hidden = false;
+            return;
+          }
+          p._aiSummary = summary;
+        }
+        aiSummaryEl.textContent = p._aiSummary;
+        aiSummaryEl.hidden = false;
+      });
+    }
   }
 
   let discoverMarker = null;
@@ -1917,6 +1943,7 @@
       + `&destination=${encodeURIComponent(lastDestination)}`
       + `&waypoints=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`
       + `&travelmode=driving`;
+    const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
 
     discoverResultEl.innerHTML = `
       <div class="place-card discover-card">
@@ -1929,11 +1956,18 @@
           ${openStatus}
         </div>
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
+        <div class="card-actions">
+          <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+          ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
+        </div>
         <div class="eaten-widget-slot"></div>
+        <div class="ai-summary" hidden></div>
+        <div class="review-list" hidden></div>
       </div>
     `;
 
     wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name);
+    wireReviewAndAiActions(discoverResultEl, p, name);
 
     clearDiscoverMarker();
     discoverMarker = new google.maps.Marker({
@@ -2047,8 +2081,8 @@
           setStatus(`比對評論中…(${i + 1}/${candidates.length})`);
           const place = candidates[i];
           const reviews = await fetchPlaceReviews(place.id);
-          place._reviews = reviews;
-          const hit = reviews.find(r => reviewMentions(r, dishKeyword));
+          if (reviews !== null) place._reviews = reviews;
+          const hit = (reviews || []).find(r => reviewMentions(r, dishKeyword));
           if (hit) {
             place._matchedReview = hit;
             place._matchedKeyword = dishKeyword;
