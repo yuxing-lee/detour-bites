@@ -120,6 +120,11 @@
     flex: 1;
   }
 
+  .input-with-button > input {
+    flex: 1;
+    min-width: 0;
+  }
+
   .autocomplete-wrap {
     position: relative;
   }
@@ -595,6 +600,17 @@
     color: var(--muted);
   }
 
+  .ai-summary {
+    margin-top: 8px;
+    font-size: 12.5px;
+    color: var(--paper);
+    background: rgba(111, 191, 139, 0.12);
+    border: 1px solid var(--good);
+    border-radius: 6px;
+    padding: 8px 10px;
+    line-height: 1.6;
+  }
+
   .main {
     position: relative;
   }
@@ -674,7 +690,10 @@
     </div>
 
     <label for="keyword">關鍵字 (選填)</label>
-    <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵" />
+    <div class="input-with-button">
+      <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵，或口語描述像「便宜、現在有開」" />
+      <button type="button" id="keywordParseBtn" class="secondary-btn">✨ AI 解析</button>
+    </div>
 
     <label for="dishKeyword">想吃的餐點 (選填，比對評論內容)</label>
     <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
@@ -742,6 +761,11 @@
 
 <script type="module">
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  // 依序嘗試的 model 清單：每個 model 在 Google 那邊是各自獨立的免費額度，
+  // 前面的 model 額度用完（或暫時出錯）就自動換下一個，盡量把整體可用額度疊加起來。
+  // gemma 系列跟 Gemini 系列的免費配額是分開算的，所以放在清單最後面當保底。
+  const GEMINI_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemma-3-27b-it'];
   const SAMPLE_INTERVAL_KM = 8;
   const MAX_REVIEW_CANDIDATES = 60;
 
@@ -765,6 +789,7 @@
   const targetCountInput = document.getElementById('targetCount');
   const radiusInput = document.getElementById('radius');
   const keywordInput = document.getElementById('keyword');
+  const keywordParseBtn = document.getElementById('keywordParseBtn');
   const dishKeywordInput = document.getElementById('dishKeyword');
   const useCurrentLocationBtn = document.getElementById('useCurrentLocationBtn');
   const originSuggestionsEl = document.getElementById('originSuggestions');
@@ -1582,6 +1607,131 @@
     }).join('');
   }
 
+  // gemma 系列目前不支援 responseSchema 的原生 JSON mode，要它輸出 JSON 只能用文字指令要求，
+  // 且回傳常會被包一層 ```json ... ``` code fence，這裡都一併處理掉
+  function isGemmaModel(model) {
+    return model.startsWith('gemma-');
+  }
+
+  function stripJsonCodeFence(text) {
+    return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  }
+
+  async function callGeminiModel(model, prompt, schema) {
+    const nativeJsonMode = schema && !isGemmaModel(model);
+    const finalPrompt = (schema && !nativeJsonMode)
+      ? `${prompt}\n\n請「只」回傳一個符合以下 JSON schema 的物件本身，不要加任何說明文字、也不要用 markdown code fence 包起來：\n${JSON.stringify(schema)}`
+      : prompt;
+    const generationConfig = nativeJsonMode
+      ? { responseMimeType: 'application/json', responseSchema: schema }
+      : { maxOutputTokens: 300 };
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: finalPrompt }] }],
+        generationConfig
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error(`[${model}] Gemini API 回傳非 OK：${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error(`[${model}] Gemini 沒有回傳內容`);
+    if (!schema) return text.trim();
+    return JSON.parse(nativeJsonMode ? text : stripJsonCodeFence(text));
+  }
+
+  // 依 GEMINI_MODEL_CHAIN 的順序依序嘗試；某個 model 失敗（額度用完、暫時性錯誤、
+  // 或 gemma 沒把 JSON 格式輸出對）就換下一個，全部都失敗才把最後一個錯誤丟出去給呼叫端。
+  async function callGemini(prompt, schema) {
+    let lastErr;
+    for (const model of GEMINI_MODEL_CHAIN) {
+      try {
+        return await callGeminiModel(model, prompt, schema);
+      } catch (err) {
+        console.warn(`Gemini model「${model}」呼叫失敗，換下一個 model：`, err);
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('沒有可用的 Gemini model');
+  }
+
+  // 把一間店的評論丟給 Gemini，生成一段自然語言摘要（整體評價、常被稱讚的菜色、需注意的缺點）
+  async function summarizePlaceReviews(placeName, reviews) {
+    if (!reviews.length) return '目前沒有評論資料可供摘要。';
+
+    const reviewsText = reviews.slice(0, 10).map((r, i) => {
+      const rating = r.rating ? `${r.rating}★` : '無評分';
+      return `${i + 1}. [${rating}] ${reviewText(r).slice(0, 300)}`;
+    }).join('\n');
+
+    const prompt = `你是美食評論摘要助手。以下是「${placeName}」這間餐廳在 Google 地圖上的顧客評論，請用繁體中文寫一段 100 字以內的摘要，包含：整體評價傾向、常被提到的推薦菜色或特色，以及需要注意的缺點（如果有的話）。直接寫成一段自然的話，不要條列、不要加標題。\n\n評論：\n${reviewsText}`;
+
+    try {
+      return await callGemini(prompt);
+    } catch (err) {
+      console.warn('Gemini 評論摘要失敗：', err);
+      return 'AI 摘要暫時無法使用，請稍後再試。';
+    }
+  }
+
+  // 把使用者在關鍵字欄位打的口語文字，解析成搜尋關鍵字 + 是否只看營業中 + 是否偏好便宜
+  async function parseKeywordWithGemini(rawText) {
+    const prompt = `你是餐廳搜尋助手。使用者在「關鍵字」欄位輸入了以下文字，裡面可能包含料理名稱、店名，也可能夾雜口語化的篩選需求（例如想要便宜、想要現在還有營業）。請解析成三個欄位：
+1. keyword：純粹用來做地圖文字搜尋的關鍵字（料理名稱、店名或菜色，去掉篩選類的敘述）；如果整句都只是篩選需求、沒有指定料理或店名，回傳空字串。
+2. openNow：使用者是否表達想要「現在營業中／還有開」的意思，true 或 false。
+3. preferCheap：使用者是否表達想要「便宜／划算／平價」的意思，true 或 false。
+
+原始輸入：「${rawText}」`;
+
+    return callGemini(prompt, {
+      type: 'OBJECT',
+      properties: {
+        keyword: { type: 'STRING' },
+        openNow: { type: 'BOOLEAN' },
+        preferCheap: { type: 'BOOLEAN' }
+      },
+      required: ['keyword', 'openNow', 'preferCheap']
+    });
+  }
+
+  if (!GEMINI_API_KEY) {
+    keywordParseBtn.hidden = true;
+  } else {
+    keywordParseBtn.addEventListener('click', async () => {
+      const raw = keywordInput.value.trim();
+      if (!raw) {
+        setStatus('請先在關鍵字欄位輸入內容再解析', 'error');
+        return;
+      }
+      keywordParseBtn.disabled = true;
+      keywordParseBtn.textContent = '解析中…';
+      try {
+        const parsed = await parseKeywordWithGemini(raw);
+        keywordInput.value = parsed.keyword || '';
+        if (parsed.openNow) openNowOnlyEl.checked = true;
+        if (parsed.preferCheap) sortSelectEl.value = 'price';
+        applyFiltersAndRender();
+
+        const notes = [parsed.keyword ? `關鍵字＝「${parsed.keyword}」` : '未指定關鍵字'];
+        if (parsed.openNow) notes.push('只顯示營業中');
+        if (parsed.preferCheap) notes.push('依價格排序');
+        setStatus(`已用 AI 解析：${notes.join('、')}`, 'ok');
+      } catch (err) {
+        console.warn('Gemini 關鍵字解析失敗：', err);
+        setStatus('AI 解析失敗，請直接手動輸入關鍵字', 'error');
+      } finally {
+        keywordParseBtn.disabled = false;
+        keywordParseBtn.textContent = '✨ AI 解析';
+      }
+    });
+  }
+
   function applyFiltersAndRender() {
     if (!lastResults.length) return;
 
@@ -1674,8 +1824,10 @@
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+          ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
         </div>
         <div class="eaten-widget-slot"></div>
+        <div class="ai-summary" hidden></div>
         <div class="review-list" hidden></div>
       `;
       card.addEventListener('click', () => {
@@ -1707,6 +1859,29 @@
         reviewListEl.hidden = false;
         reviewToggleBtn.textContent = `查看評論 (${p._reviews.length})`;
       });
+
+      const aiSummaryBtn = card.querySelector('.ai-summary-toggle');
+      const aiSummaryEl = card.querySelector('.ai-summary');
+      if (aiSummaryBtn) {
+        aiSummaryBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!aiSummaryEl.hidden) {
+            aiSummaryEl.hidden = true;
+            return;
+          }
+          if (!p._aiSummary) {
+            aiSummaryBtn.textContent = '摘要生成中…';
+            aiSummaryBtn.disabled = true;
+            if (!p._reviews) p._reviews = await fetchPlaceReviews(p.id);
+            p._aiSummary = await summarizePlaceReviews(name, p._reviews);
+            aiSummaryBtn.disabled = false;
+            aiSummaryBtn.textContent = '✨ AI 摘要';
+          }
+          aiSummaryEl.textContent = p._aiSummary;
+          aiSummaryEl.hidden = false;
+        });
+      }
+
       resultListEl.appendChild(card);
     });
   }
