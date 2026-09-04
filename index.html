@@ -336,6 +336,68 @@
     color: #221202;
   }
 
+  .review-match {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--paper);
+    background: rgba(242, 163, 64, 0.12);
+    border: 1px solid var(--amber-dim);
+    border-radius: 6px;
+    padding: 6px 8px;
+    line-height: 1.5;
+  }
+
+  .review-toggle {
+    margin-top: 8px;
+    width: auto;
+    background: transparent;
+    border: 1px solid var(--panel-line);
+    color: var(--muted);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+  }
+
+  .review-toggle:hover { background: #1f274a; color: var(--paper); }
+  .review-toggle:disabled { cursor: wait; }
+
+  .review-list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .review-item {
+    background: #12172b;
+    border: 1px solid var(--panel-line);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+
+  .review-meta {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .review-rating { color: var(--amber); }
+
+  .review-text {
+    font-size: 12.5px;
+    color: var(--paper);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+
+  .review-empty {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
   .main {
     position: relative;
   }
@@ -417,6 +479,10 @@
     <label for="keyword">關鍵字 (選填)</label>
     <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵" />
 
+    <label for="dishKeyword">想吃的餐點 (選填，比對評論內容)</label>
+    <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
+    <div class="key-note">填寫後會針對沿路候選餐廳逐一查詢 Google 評論比對關鍵字，只留下評論裡有人提到的店家；店家數較多時會比較慢，也會增加 Places API 用量。</div>
+
     <button id="searchBtn">搜尋沿路美食</button>
     <div id="status" class="status"></div>
     <div id="routeOptions" class="route-options" hidden></div>
@@ -450,6 +516,7 @@
 <script type="module">
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const SAMPLE_INTERVAL_KM = 8;
+  const MAX_REVIEW_CANDIDATES = 60;
 
   let map, directionsService, directionsRenderer;
   let placeMarkers = [];
@@ -471,6 +538,7 @@
   const targetCountInput = document.getElementById('targetCount');
   const radiusInput = document.getElementById('radius');
   const keywordInput = document.getElementById('keyword');
+  const dishKeywordInput = document.getElementById('dishKeyword');
   const useCurrentLocationBtn = document.getElementById('useCurrentLocationBtn');
   const originSuggestionsEl = document.getElementById('originSuggestions');
   const destinationSuggestionsEl = document.getElementById('destinationSuggestions');
@@ -491,6 +559,7 @@
       if (saved.targetCount) targetCountInput.value = saved.targetCount;
       if (saved.radius) radiusInput.value = saved.radius;
       if (saved.keyword) keywordInput.value = saved.keyword;
+      if (saved.dishKeyword) dishKeywordInput.value = saved.dishKeyword;
     } catch (err) {
       console.warn('讀取上次搜尋條件失敗：', err);
     }
@@ -503,7 +572,8 @@
         destination: destinationInput.value.trim(),
         targetCount: targetCountInput.value,
         radius: radiusInput.value,
-        keyword: keywordInput.value.trim()
+        keyword: keywordInput.value.trim(),
+        dishKeyword: dishKeywordInput.value.trim()
       }));
     } catch (err) {
       console.warn('儲存搜尋條件失敗：', err);
@@ -899,6 +969,75 @@
     PRICE_LEVEL_VERY_EXPENSIVE: 4
   };
 
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  // 用 Place Details (New) 只抓 reviews 欄位；只在使用者點開單一店家、
+  // 或有填「想吃的餐點」需要逐間比對評論時才呼叫，避免每次搜尋都白白多打一堆 API
+  async function fetchPlaceReviews(placeId) {
+    try {
+      const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=zh-TW`, {
+        headers: {
+          'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+          'X-Goog-FieldMask': 'reviews'
+        }
+      });
+      if (!res.ok) {
+        console.warn('取得評論失敗：', res.status, await res.text());
+        return [];
+      }
+      const data = await res.json();
+      return data.reviews || [];
+    } catch (err) {
+      console.warn('取得評論發生錯誤：', err);
+      return [];
+    }
+  }
+
+  function reviewText(review) {
+    return (review.text?.text || review.originalText?.text || '').trim();
+  }
+
+  function reviewMentions(review, keyword) {
+    return reviewText(review).toLowerCase().includes(keyword.toLowerCase());
+  }
+
+  // 找關鍵字附近的一小段文字當作預覽，找不到就退回開頭那段
+  function reviewSnippet(review, keyword) {
+    const text = reviewText(review).replace(/\s+/g, ' ');
+    if (!text) return '';
+    const windowSize = 90;
+    const idx = keyword ? text.toLowerCase().indexOf(keyword.toLowerCase()) : -1;
+    if (idx === -1) {
+      return text.length > windowSize ? text.slice(0, windowSize) + '…' : text;
+    }
+    const start = Math.max(0, idx - 20);
+    const end = Math.min(text.length, idx + keyword.length + 60);
+    return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '');
+  }
+
+  function renderReviewList(container, reviews) {
+    if (!reviews.length) {
+      container.innerHTML = '<div class="review-empty">目前沒有評論資料</div>';
+      return;
+    }
+    container.innerHTML = reviews.map(r => {
+      const author = escapeHtml(r.authorAttribution?.displayName || '匿名');
+      const rating = r.rating ? '★'.repeat(Math.round(r.rating)) : '';
+      const time = escapeHtml(r.relativePublishTimeDescription || '');
+      const text = escapeHtml(reviewText(r));
+      return `
+        <div class="review-item">
+          <div class="review-meta"><span class="review-author">${author}</span><span class="review-rating">${rating}</span><span class="review-time">${time}</span></div>
+          <div class="review-text">${text}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
   function applyFiltersAndRender() {
     if (!lastResults.length) return;
 
@@ -969,6 +1108,8 @@
         + `&waypoints=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`
         + `&travelmode=driving`;
       const routeDistanceText = formatRouteDistance(p._routeDistance);
+      const matchedSnippet = p._matchedReview ? reviewSnippet(p._matchedReview, p._matchedKeyword || '') : '';
+      const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
       card.innerHTML = `
         <div class="name">${name}</div>
         <div class="meta">
@@ -978,7 +1119,10 @@
           ${price ? `<span>${price}</span>` : ''}
           ${openStatus}
         </div>
+        ${matchedSnippet ? `<div class="review-match">💬 評論提到：「${escapeHtml(matchedSnippet)}」</div>` : ''}
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
+        <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+        <div class="review-list" hidden></div>
       `;
       card.addEventListener('click', () => {
         map.panTo(pos);
@@ -988,6 +1132,25 @@
         }).open(map, marker);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
+
+      const reviewToggleBtn = card.querySelector('.review-toggle');
+      const reviewListEl = card.querySelector('.review-list');
+      reviewToggleBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!reviewListEl.hidden) {
+          reviewListEl.hidden = true;
+          return;
+        }
+        if (!p._reviews) {
+          reviewToggleBtn.textContent = '載入評論中…';
+          reviewToggleBtn.disabled = true;
+          p._reviews = await fetchPlaceReviews(p.id);
+          reviewToggleBtn.disabled = false;
+        }
+        renderReviewList(reviewListEl, p._reviews);
+        reviewListEl.hidden = false;
+        reviewToggleBtn.textContent = `查看評論 (${p._reviews.length})`;
+      });
       resultListEl.appendChild(card);
     });
   }
@@ -1026,9 +1189,42 @@
       }
 
       lastResults = Array.from(allResultsMap.values());
+
+      const dishKeyword = dishKeywordInput.value.trim();
+      let cappedCandidateCount = 0;
+      if (dishKeyword) {
+        // 依順路距離排序後只取前 MAX_REVIEW_CANDIDATES 間去查評論，
+        // 避免路線很長、候選店家很多時打爆 Place Details 配額
+        const candidates = lastResults
+          .slice()
+          .sort((a, b) => (a._routeDistance ?? Infinity) - (b._routeDistance ?? Infinity))
+          .slice(0, MAX_REVIEW_CANDIDATES);
+        cappedCandidateCount = candidates.length;
+
+        const matched = [];
+        for (let i = 0; i < candidates.length; i++) {
+          setStatus(`比對評論中…(${i + 1}/${candidates.length})`);
+          const place = candidates[i];
+          const reviews = await fetchPlaceReviews(place.id);
+          place._reviews = reviews;
+          const hit = reviews.find(r => reviewMentions(r, dishKeyword));
+          if (hit) {
+            place._matchedReview = hit;
+            place._matchedKeyword = dishKeyword;
+            matched.push(place);
+          }
+          await new Promise(r => setTimeout(r, 120));
+        }
+        lastResults = matched;
+      }
+
       resultsControlsEl.hidden = lastResults.length === 0;
       applyFiltersAndRender();
-      setStatus(`完成！沿路共找到 ${lastResults.length} 間不重複的餐廳。`, 'ok');
+      if (dishKeyword) {
+        setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳。`, 'ok');
+      } else {
+        setStatus(`完成！沿路共找到 ${lastResults.length} 間不重複的餐廳。`, 'ok');
+      }
     } catch (err) {
       console.error(err);
       setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
