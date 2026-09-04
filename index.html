@@ -762,7 +762,10 @@
 <script type="module">
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const GEMINI_MODEL = 'gemini-2.5-flash';
+  // 依序嘗試的 model 清單：每個 model 在 Google 那邊是各自獨立的免費額度，
+  // 前面的 model 額度用完（或暫時出錯）就自動換下一個，盡量把整體可用額度疊加起來。
+  // gemma 系列跟 Gemini 系列的免費配額是分開算的，所以放在清單最後面當保底。
+  const GEMINI_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemma-3-27b-it'];
   const SAMPLE_INTERVAL_KM = 8;
   const MAX_REVIEW_CANDIDATES = 60;
 
@@ -1604,30 +1607,58 @@
     }).join('');
   }
 
-  // 統一呼叫 Gemini generateContent 的小工具；schema 有給就走 JSON mode（回傳解析後的物件），
-  // 沒給就當純文字生成用（回傳字串）。失敗時丟出 Error，由呼叫端決定要怎麼呈現給使用者。
-  async function callGemini(prompt, schema) {
-    const generationConfig = schema
+  // gemma 系列目前不支援 responseSchema 的原生 JSON mode，要它輸出 JSON 只能用文字指令要求，
+  // 且回傳常會被包一層 ```json ... ``` code fence，這裡都一併處理掉
+  function isGemmaModel(model) {
+    return model.startsWith('gemma-');
+  }
+
+  function stripJsonCodeFence(text) {
+    return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  }
+
+  async function callGeminiModel(model, prompt, schema) {
+    const nativeJsonMode = schema && !isGemmaModel(model);
+    const finalPrompt = (schema && !nativeJsonMode)
+      ? `${prompt}\n\n請「只」回傳一個符合以下 JSON schema 的物件本身，不要加任何說明文字、也不要用 markdown code fence 包起來：\n${JSON.stringify(schema)}`
+      : prompt;
+    const generationConfig = nativeJsonMode
       ? { responseMimeType: 'application/json', responseSchema: schema }
       : { maxOutputTokens: 300 };
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts: [{ text: finalPrompt }] }],
         generationConfig
       })
     });
 
     if (!res.ok) {
-      throw new Error(`Gemini API 回傳非 OK：${res.status} ${await res.text()}`);
+      throw new Error(`[${model}] Gemini API 回傳非 OK：${res.status} ${await res.text()}`);
     }
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini 沒有回傳內容');
-    return schema ? JSON.parse(text) : text.trim();
+    if (!text) throw new Error(`[${model}] Gemini 沒有回傳內容`);
+    if (!schema) return text.trim();
+    return JSON.parse(nativeJsonMode ? text : stripJsonCodeFence(text));
+  }
+
+  // 依 GEMINI_MODEL_CHAIN 的順序依序嘗試；某個 model 失敗（額度用完、暫時性錯誤、
+  // 或 gemma 沒把 JSON 格式輸出對）就換下一個，全部都失敗才把最後一個錯誤丟出去給呼叫端。
+  async function callGemini(prompt, schema) {
+    let lastErr;
+    for (const model of GEMINI_MODEL_CHAIN) {
+      try {
+        return await callGeminiModel(model, prompt, schema);
+      } catch (err) {
+        console.warn(`Gemini model「${model}」呼叫失敗，換下一個 model：`, err);
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('沒有可用的 Gemini model');
   }
 
   // 把一間店的評論丟給 Gemini，生成一段自然語言摘要（整體評價、常被稱讚的菜色、需注意的缺點）
