@@ -9,15 +9,26 @@
   - Maps JavaScript API
   - Directions API
   - Places API (New)
+- （選填）一組已啟用 Generative Language API 的 Gemini API key，用來開啟 AI 評論摘要 / 關鍵字口語解析功能
 
 ## 安裝與啟動
 
 ```bash
 npm install
 cp .env.example .env
-# 編輯 .env，填入你的 VITE_GOOGLE_MAPS_API_KEY
+# 編輯 .env，填入你的 VITE_GOOGLE_MAPS_API_KEY（必填）
+# 選填：填入 VITE_GEMINI_API_KEY 開啟 AI 功能，留空則兩個 AI 按鈕會自動隱藏
 npm run dev
 ```
+
+## AI 功能（選填，需要 Gemini API key）
+
+有設定 `VITE_GEMINI_API_KEY` 時，會多兩個功能：
+
+- **✨ AI 摘要**：在餐廳卡片點這顆按鈕，會抓該店的 Google 評論丟給 Gemini，生成一段整體評價／推薦菜色／注意事項的摘要。
+- **✨ AI 解析**（關鍵字欄位旁）：關鍵字欄位可以打口語一點的描述，例如「便宜、現在有開的」，按下 AI 解析後會拆成「搜尋關鍵字」＋自動勾選「只顯示營業中」／切成「價格低到高」排序。
+
+沒有設定這組 key 的話，這兩顆按鈕會自動隱藏，其餘功能不受影響。
 
 ## 建置與預覽
 
@@ -43,11 +54,11 @@ npm run preview
 
 ## API key 安全性
 
-`VITE_GOOGLE_MAPS_API_KEY` 會在建置時被 Vite 靜態注入前端程式碼、打包進最終產物，任何看得到已發布網頁原始碼的人都拿得到它——這是瀏覽器端地圖應用的正常曝光方式，`.env` 只是開發/建置階段的方便做法，不是金鑰的保密機制。務必在 Google Cloud Console：
+`VITE_GOOGLE_MAPS_API_KEY`（以及選填的 `VITE_GEMINI_API_KEY`）都會在建置時被 Vite 靜態注入前端程式碼、打包進最終產物，任何看得到已發布網頁原始碼的人都拿得到它——這是瀏覽器端應用的正常曝光方式，`.env` 只是開發/建置階段的方便做法，不是金鑰的保密機制。務必在 Google Cloud Console：
 
 - 設定 HTTP referrer 限制，只允許你的正式網域（開發時可另外加 localhost）
-- 設定 API restrictions，只允許此專案實際用到的 API
-- 建議使用專用 key，並留意配額與帳務，避免被盜用產生費用
+- 設定 API restrictions，只允許此專案實際用到的 API（Gemini key 就只勾 Generative Language API）
+- 建議每組用途各用專用 key，並留意配額與帳務，避免被盜用產生費用
 
 ## 專案結構
 
