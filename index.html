@@ -1307,6 +1307,87 @@
     return points;
   }
 
+  // 把路線每個 leg 的每個 step 的詳細座標串成一條完整、有方向性的路徑
+  // （比 overview_path 精細很多，而且只包含「你會實際開的那個方向的車道」，
+  // 不會混到對向車道或平行道路）
+  function buildDetailedRoutePath(route) {
+    const points = [];
+    (route.legs || []).forEach(leg => {
+      (leg.steps || []).forEach(step => {
+        const stepPath = step.path && step.path.length ? step.path : [step.start_location, step.end_location];
+        stepPath.forEach(pt => {
+          const last = points[points.length - 1];
+          if (!last || !last.equals(pt)) points.push(pt);
+        });
+      });
+    });
+    return points.length >= 2 ? points : route.overview_path;
+  }
+
+  function normalizeAngleRad(a) {
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a < -Math.PI) a += 2 * Math.PI;
+    return a;
+  }
+
+  const EARTH_RADIUS_M = 6371000;
+
+  // 把點 P 投影到路線上的一個線段 A→B，回傳「垂直於路線的距離」與
+  // 「沿路線方向、從路線起點累積到投影點的距離」。
+  // 用球面三角的 cross-track / along-track 公式，短線段（一個 step 內的路徑點）誤差可忽略。
+  function projectPointOntoSegment(A, B, P, cumulativeToA, segLen) {
+    const headingAB = google.maps.geometry.spherical.computeHeading(A, B);
+    const distAP = google.maps.geometry.spherical.computeDistanceBetween(A, P);
+
+    if (distAP < 0.5 || segLen < 0.5) {
+      return { distance: distAP, progress: cumulativeToA };
+    }
+
+    const bearingAB = (headingAB * Math.PI) / 180;
+    const bearingAP = (google.maps.geometry.spherical.computeHeading(A, P) * Math.PI) / 180;
+    const dr = distAP / EARTH_RADIUS_M;
+    const bearingDiff = normalizeAngleRad(bearingAP - bearingAB);
+
+    const crossTrack = Math.asin(Math.sin(dr) * Math.sin(bearingDiff)) * EARTH_RADIUS_M;
+    let alongTrackRatio = Math.cos(dr) / Math.cos(crossTrack / EARTH_RADIUS_M);
+    alongTrackRatio = Math.max(-1, Math.min(1, alongTrackRatio));
+    let alongTrack = Math.acos(alongTrackRatio) * EARTH_RADIUS_M;
+    if (Number.isNaN(alongTrack)) alongTrack = 0;
+    if (Math.abs(bearingDiff) > Math.PI / 2) alongTrack = -alongTrack;
+
+    if (alongTrack <= 0) {
+      return { distance: distAP, progress: cumulativeToA };
+    }
+    if (alongTrack >= segLen) {
+      const distBP = google.maps.geometry.spherical.computeDistanceBetween(B, P);
+      return { distance: distBP, progress: cumulativeToA + segLen };
+    }
+    return { distance: Math.abs(crossTrack), progress: cumulativeToA + alongTrack };
+  }
+
+  // 找出點 P 到整條路線最近的位置：真正垂直於路線的距離（順路程度），
+  // 以及沿路線方向從起點累積到那個位置的距離（用來確保排序不會忽前忽後）。
+  // 因為是用有方向性的逐步路徑計算，天生就不會把對向車道/反方向路段誤判成「順路」。
+  function projectPointOntoRoutePath(point, path) {
+    let cumulative = 0;
+    let best = null;
+    for (let i = 1; i < path.length; i++) {
+      const A = path[i - 1];
+      const B = path[i];
+      const segLen = google.maps.geometry.spherical.computeDistanceBetween(A, B);
+      if (segLen > 0) {
+        const result = projectPointOntoSegment(A, B, point, cumulative, segLen);
+        if (!best || result.distance < best.distance) best = result;
+      }
+      cumulative += segLen;
+    }
+    if (!best) {
+      const only = path[0];
+      return { distance: google.maps.geometry.spherical.computeDistanceBetween(only, point), progress: 0 };
+    }
+    return best;
+  }
+
   const PLACE_FIELD_MASK = [
     'places.id',
     'places.displayName',
@@ -1516,7 +1597,14 @@
     } else if (sortSelectEl.value === 'rating') {
       list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else {
-      list.sort((a, b) => (a._routeDistance ?? Infinity) - (b._routeDistance ?? Infinity));
+      // 順路優先：先比真正垂直於路線的距離（越小代表越不用繞路），
+      // 距離相近時再依沿路線方向的累積進度排序，讓清單順序盡量跟著行進方向走，不會忽前忽後
+      list.sort((a, b) => {
+        const da = a._routeDistance ?? Infinity;
+        const db = b._routeDistance ?? Infinity;
+        if (Math.abs(da - db) > 30) return da - db;
+        return (a._routeProgress ?? Infinity) - (b._routeProgress ?? Infinity);
+      });
     }
 
     renderResults(list.slice(0, targetCount));
@@ -1749,22 +1837,24 @@
         const places = await nearbySearch(samplePoints[i], radius, keyword);
         places.forEach(p => {
           if (!p.id || !p.location) return;
-          const dist = google.maps.geometry.spherical.computeDistanceBetween(
-            samplePoints[i],
-            new google.maps.LatLng(p.location.latitude, p.location.longitude)
-          );
-          // 同一間店可能被多個取樣點找到，保留離路線最近的那個距離
-          const existing = allResultsMap.get(p.id);
-          if (!existing || dist < existing._routeDistance) {
-            p._routeDistance = dist;
-            allResultsMap.set(p.id, p);
-          }
+          // 同一間店可能被多個取樣點找到，去重即可，實際「順路距離」在下面統一用完整路線重新計算
+          if (!allResultsMap.has(p.id)) allResultsMap.set(p.id, p);
         });
         // 避免過快連續打 API
         await new Promise(r => setTimeout(r, 150));
       }
 
       lastResults = Array.from(allResultsMap.values());
+
+      // 用完整、有方向性的逐步路徑（而不是粗略的取樣點）算出每間店「真正垂直於路線的距離」，
+      // 以及沿路線方向的累積進度，避免把對向車道、反方向路段或平行道路上的店誤判成順路
+      const detailedPath = buildDetailedRoutePath(allRoutes[routeIndex]);
+      lastResults.forEach(p => {
+        const placeLatLng = new google.maps.LatLng(p.location.latitude, p.location.longitude);
+        const proj = projectPointOntoRoutePath(placeLatLng, detailedPath);
+        p._routeDistance = proj.distance;
+        p._routeProgress = proj.progress;
+      });
 
       const dishKeyword = dishKeywordInput.value.trim();
       let cappedCandidateCount = 0;
