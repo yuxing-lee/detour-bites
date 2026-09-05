@@ -1715,10 +1715,6 @@
     return (review.text?.text || review.originalText?.text || '').trim();
   }
 
-  function reviewMentions(review, keyword) {
-    return reviewText(review).toLowerCase().includes(keyword.toLowerCase());
-  }
-
   // 免 AI 的同義詞擴充：把「想吃的餐點」拆成多個詞，每個詞再對照下面的同義詞群組展開，
   // 只要評論裡出現任何一個展開後的詞就算比對到，緩解使用者打法跟評論用字不一致的問題
   // （例如打「便宜」也能比對到寫「划算」「平價」的評論）。清單不求全，之後真的比對不到再交給 AI。
