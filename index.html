@@ -1719,6 +1719,40 @@
     return reviewText(review).toLowerCase().includes(keyword.toLowerCase());
   }
 
+  // 免 AI 的同義詞擴充：把「想吃的餐點」拆成多個詞，每個詞再對照下面的同義詞群組展開，
+  // 只要評論裡出現任何一個展開後的詞就算比對到，緩解使用者打法跟評論用字不一致的問題
+  // （例如打「便宜」也能比對到寫「划算」「平價」的評論）。清單不求全，之後真的比對不到再交給 AI。
+  const DISH_SYNONYM_GROUPS = [
+    ['便宜', '划算', '平價', '俗又大碗', '俗擱大碗', 'cp值高', 'CP值高'],
+    ['甜點', '甜食', '甜的', '甜品', '飯後甜點'],
+    ['辣', '麻辣', '辣味', '夠辣'],
+    ['早餐', '早午餐', 'brunch', 'Brunch'],
+    ['消夜', '宵夜'],
+    ['約會', '氣氛好', '氛圍佳', '浪漫'],
+    ['特別', '特色', '招牌', '必點', '推薦菜'],
+    ['清淡', '不辣', '養生'],
+    ['份量大', '份量足', '吃得飽', '大碗']
+  ];
+
+  function expandDishTokens(rawText) {
+    const tokens = rawText.split(/[、,，\/\s]+/).map(t => t.trim()).filter(Boolean);
+    const expanded = new Set();
+    (tokens.length ? tokens : [rawText.trim()]).filter(Boolean).forEach(tok => {
+      expanded.add(tok);
+      DISH_SYNONYM_GROUPS.forEach(group => {
+        if (group.some(w => tok.includes(w) || w.includes(tok))) {
+          group.forEach(w => expanded.add(w));
+        }
+      });
+    });
+    return Array.from(expanded);
+  }
+
+  function reviewMentionsAny(review, tokens) {
+    const text = reviewText(review).toLowerCase();
+    return tokens.some(t => text.includes(t.toLowerCase()));
+  }
+
   // 找關鍵字附近的一小段文字當作預覽，找不到就退回開頭那段
   function reviewSnippet(review, keyword) {
     const text = reviewText(review).replace(/\s+/g, ' ');
@@ -1835,6 +1869,30 @@
     }
   }
 
+  // 免 AI、每次搜尋都會自動跑一遍的關鍵字清理：用固定的規則把常見的口語篩選詞
+  // （現在有開、便宜等）從關鍵字裡挑出來變成篩選條件，剩下的文字才拿去做地圖文字搜尋，
+  // 避免這些字混在 textQuery 裡稀釋掉真正的料理名稱/店名關鍵字。跟 parseKeywordWithGemini
+  // 回傳同一種格式，方便共用下游邏輯；規則涵蓋不到的說法（更抽象的口語）才會交給 AI 解析。
+  const KEYWORD_FILTER_PATTERNS = [
+    { re: /(現在|目前)?(營業中|還在營業|有開著|還有開|有開|開著)/g, flag: 'openNow' },
+    { re: /(便宜|划算|平價|俗又大碗|俗擱大碗|cp值高)/gi, flag: 'preferCheap' }
+  ];
+
+  function localParseKeyword(rawText) {
+    let keyword = rawText;
+    let openNow = false;
+    let preferCheap = false;
+    KEYWORD_FILTER_PATTERNS.forEach(({ re, flag }) => {
+      if (re.test(keyword)) {
+        if (flag === 'openNow') openNow = true;
+        if (flag === 'preferCheap') preferCheap = true;
+        keyword = keyword.replace(re, '');
+      }
+    });
+    keyword = keyword.replace(/[，,、]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return { keyword, openNow, preferCheap };
+  }
+
   // 把使用者在關鍵字欄位打的口語文字，解析成搜尋關鍵字 + 是否只看營業中 + 是否偏好便宜
   async function parseKeywordWithGemini(rawText) {
     const prompt = `你是餐廳搜尋助手。使用者在「關鍵字」欄位輸入了以下文字，裡面可能包含料理名稱、店名，也可能夾雜口語化的篩選需求（例如想要便宜、想要現在還有營業）。請解析成三個欄位：
@@ -1852,6 +1910,30 @@
         preferCheap: { type: 'BOOLEAN' }
       },
       required: ['keyword', 'openNow', 'preferCheap']
+    });
+  }
+
+  // 「想吃的餐點」的 AI 備援：只有在同義詞擴充比對完全找不到符合的店家時才會呼叫，
+  // 一次把所有候選店家的評論摘錄丟給 Gemini 做語意判斷（而不是每間店各呼叫一次），
+  // 藉此在不大量增加 API 用量的前提下，也能應付「氣氛好」「約會」這類同義詞庫涵蓋不到的模糊描述
+  async function semanticMatchDishKeyword(dishKeyword, candidates) {
+    const entries = candidates.map((c, i) => {
+      const snippets = (c._reviews || [])
+        .slice(0, 5)
+        .map(r => reviewText(r).slice(0, 150))
+        .filter(Boolean)
+        .join(' / ');
+      return `${i}. ${c.displayName?.text || '(未命名)'}：${snippets || '（無評論內容）'}`;
+    }).join('\n');
+
+    const prompt = `你是餐廳評論比對助手。使用者想找「${dishKeyword}」，可能是具體菜色，也可能是氣氛、價位、場合等比較抽象的描述。以下是候選餐廳的編號、店名跟幾則評論摘錄，請判斷哪些餐廳的評論內容顯示這間店符合使用者想找的東西（不需要逐字比對，語意相符即可），回傳符合的餐廳編號陣列（從 0 開始）；都不符合就回傳空陣列。\n\n${entries}`;
+
+    return callGemini(prompt, {
+      type: 'OBJECT',
+      properties: {
+        matchedIndexes: { type: 'ARRAY', items: { type: 'INTEGER' } }
+      },
+      required: ['matchedIndexes']
     });
   }
 
@@ -1961,6 +2043,9 @@
         + `&travelmode=driving`;
       const routeDistanceText = formatRouteDistance(p._routeDistance);
       const matchedSnippet = p._matchedReview ? reviewSnippet(p._matchedReview, p._matchedKeyword || '') : '';
+      const matchNote = matchedSnippet
+        ? `💬 評論提到：「${escapeHtml(matchedSnippet)}」`
+        : (p._aiMatched ? `✨ AI 判斷這裡符合「${escapeHtml(p._matchedKeyword || '')}」` : '');
       const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
       card.innerHTML = `
         <div class="name"><span class="place-index">${i + 1}</span>${escapeHtml(name)}</div>
@@ -1971,7 +2056,7 @@
           ${price ? `<span>${price}</span>` : ''}
           ${openStatus}
         </div>
-        ${matchedSnippet ? `<div class="review-match">💬 評論提到：「${escapeHtml(matchedSnippet)}」</div>` : ''}
+        ${matchNote ? `<div class="review-match">${matchNote}</div>` : ''}
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
@@ -2199,9 +2284,20 @@
     renderDiscoverResult(picked);
   });
 
-  async function searchAlongRoute(routeIndex) {
+  async function searchAlongRoute(routeIndex, keywordOverride) {
     const radius = parseInt(radiusInput.value, 10) || 1200;
-    const keyword = keywordInput.value.trim();
+    // keywordOverride 只有在「關鍵字搜不到結果、AI 重新解析後自動重試」時才會帶入（見下方零結果備援），
+    // 用 typeof 判斷而不是單純看真假值，這樣才能區分「沒有帶」跟「AI 解析出空字串」兩種狀況
+    const isFallbackRetry = typeof keywordOverride === 'string';
+    const rawKeyword = isFallbackRetry ? keywordOverride : keywordInput.value.trim();
+    const localParsed = localParseKeyword(rawKeyword);
+    const keyword = localParsed.keyword;
+    if (!isFallbackRetry) {
+      // 只在使用者這次真正送出的關鍵字上套用偵測到的篩選條件，AI 備援重試時不重複套用，
+      // 避免使用者手動取消勾選後，重試又把它勾回去
+      if (localParsed.openNow) openNowOnlyEl.checked = true;
+      if (localParsed.preferCheap) sortSelectEl.value = 'price';
+    }
 
     searchBtn.disabled = true;
     searchBtn.classList.add('is-loading');
@@ -2237,8 +2333,27 @@
         p._routeProgress = proj.progress;
       });
 
+      // 關鍵字搜尋零結果備援：如果打了關鍵字卻完全沒找到餐廳，可能是打得太口語/模糊，
+      // 讓 Google 文字搜尋字面比對失敗。只在「第一次搜尋、還沒重試過」時觸發一次 AI 重新解析，
+      // 避免使用者手動取消掉的篩選條件被反覆蓋回去，也避免無限重試
+      if (!isFallbackRetry && keyword && lastResults.length === 0 && GEMINI_API_KEY) {
+        setStatus(`沒有找到符合「${rawKeyword}」的餐廳，嘗試用 AI 重新解析關鍵字…`);
+        try {
+          const aiParsed = await parseKeywordWithGemini(rawKeyword);
+          const aiKeyword = (aiParsed.keyword || '').trim();
+          if (aiKeyword && aiKeyword !== keyword) {
+            if (aiParsed.openNow) openNowOnlyEl.checked = true;
+            if (aiParsed.preferCheap) sortSelectEl.value = 'price';
+            return await searchAlongRoute(routeIndex, aiKeyword);
+          }
+        } catch (err) {
+          console.warn('AI 關鍵字備援解析失敗：', err);
+        }
+      }
+
       const dishKeyword = dishKeywordInput.value.trim();
       let cappedCandidateCount = 0;
+      let dishAiMatchedCount = 0;
       if (dishKeyword) {
         // 依順路距離排序後只取前 MAX_REVIEW_CANDIDATES 間去查評論，
         // 避免路線很長、候選店家很多時打爆 Place Details 配額
@@ -2248,13 +2363,14 @@
           .slice(0, MAX_REVIEW_CANDIDATES);
         cappedCandidateCount = candidates.length;
 
+        const dishTokens = expandDishTokens(dishKeyword);
         const matched = [];
         for (let i = 0; i < candidates.length; i++) {
           setStatus(`比對評論中…(${i + 1}/${candidates.length})`);
           const place = candidates[i];
           const reviews = await fetchPlaceReviews(place.id);
           if (reviews !== null) place._reviews = reviews;
-          const hit = (reviews || []).find(r => reviewMentions(r, dishKeyword));
+          const hit = (reviews || []).find(r => reviewMentionsAny(r, dishTokens));
           if (hit) {
             place._matchedReview = hit;
             place._matchedKeyword = dishKeyword;
@@ -2262,6 +2378,27 @@
           }
           await new Promise(r => setTimeout(r, 120));
         }
+
+        // 同義詞擴充比對不到任何一間時才啟用 AI 語意比對，一次把所有候選店家的評論
+        // 摘錄送給 Gemini 判斷，涵蓋「氣氛好」「約會」這類同義詞庫沒收錄的抽象描述
+        if (!matched.length && candidates.length && GEMINI_API_KEY) {
+          setStatus(`本機比對沒有找到符合「${dishKeyword}」的餐廳，改用 AI 語意比對中…`);
+          try {
+            const { matchedIndexes } = await semanticMatchDishKeyword(dishKeyword, candidates);
+            (matchedIndexes || []).forEach(idx => {
+              const place = candidates[idx];
+              if (place && !matched.includes(place)) {
+                place._matchedKeyword = dishKeyword;
+                place._aiMatched = true;
+                matched.push(place);
+                dishAiMatchedCount++;
+              }
+            });
+          } catch (err) {
+            console.warn('AI 語意比對失敗：', err);
+          }
+        }
+
         lastResults = matched;
       }
 
@@ -2272,7 +2409,8 @@
       lastDiscoverPickId = null;
       applyFiltersAndRender();
       if (dishKeyword) {
-        setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳。`, 'ok');
+        const aiNote = dishAiMatchedCount ? `（其中 ${dishAiMatchedCount} 間是透過 AI 語意比對找到）` : '';
+        setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳${aiNote}。`, 'ok');
       } else {
         setStatus(`完成！沿路共找到 ${lastResults.length} 間不重複的餐廳。`, 'ok');
       }
