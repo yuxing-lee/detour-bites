@@ -925,7 +925,7 @@
 </div>
 
 <script type="module">
-  import { MarkerClusterer } from '@googlemaps/markerclusterer';
+  import { MarkerClusterer, SuperClusterAlgorithm } from '@googlemaps/markerclusterer';
 
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -935,6 +935,11 @@
   const GEMINI_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemma-3-27b-it'];
   const SAMPLE_INTERVAL_KM = 8;
   const MAX_REVIEW_CANDIDATES = 60;
+  // 點卡片/marker 開 InfoWindow 時會強制 zoom 到這個層級（見 panForInfoWindow），
+  // clusterer 的 maxZoom 必須小於這個值，不然開窗當下那顆 marker 還可能被收進 cluster
+  // 隱藏掉，變成 InfoWindow 指著一顆數字圓點而不是實際的店家 marker
+  const PLACE_INFO_ZOOM = 15;
+  const CLUSTER_MAX_ZOOM = PLACE_INFO_ZOOM - 1;
 
   let map, directionsService, directionsRenderer;
   let activeInfoWindow = null;
@@ -2265,7 +2270,7 @@
         <div class="review-list" hidden></div>
       `;
       card.addEventListener('click', () => {
-        panForInfoWindow(pos, 15);
+        panForInfoWindow(pos, PLACE_INFO_ZOOM);
         openPlaceInfoWindow(p, pos, marker, card);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
@@ -2276,7 +2281,7 @@
       marker.addListener('mouseover', () => setPlaceHighlighted(i, true));
       marker.addListener('mouseout', () => setPlaceHighlighted(i, false));
       marker.addListener('click', () => {
-        panForInfoWindow(pos, 15);
+        panForInfoWindow(pos, PLACE_INFO_ZOOM);
         openPlaceInfoWindow(p, pos, marker, card);
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
@@ -2290,9 +2295,15 @@
     });
 
     // 結果多、店家又密集時，個別 marker 會擠成一團互相蓋住；用 clusterer 讓縮小時
-    // 自動收成一顆數字圓點，放大到能分辨個別店家的 zoom 才拆開顯示
+    // 自動收成一顆數字圓點，放大到能分辨個別店家的 zoom 才拆開顯示。
+    // maxZoom 設在 PLACE_INFO_ZOOM 之下，確保點開 InfoWindow 時一定強制 zoom 到
+    // 不會被 cluster 隱藏的層級，兩個 marker 相關的功能才不會互相打架
     if (placeMarkers.length) {
-      placeMarkerCluster = new MarkerClusterer({ map, markers: placeMarkers });
+      placeMarkerCluster = new MarkerClusterer({
+        map,
+        markers: placeMarkers,
+        algorithm: new SuperClusterAlgorithm({ maxZoom: CLUSTER_MAX_ZOOM })
+      });
     }
   }
 
