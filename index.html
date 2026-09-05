@@ -1772,6 +1772,14 @@
       : base + `&destination=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`;
   }
 
+  // InfoWindow 的預設氣泡背景是白色，但這個頁面全站文字顏色是給深色底用的淺色（--paper），
+  // 沒特別設定的話會被繼承進來變成「白底配淺色字」，幾乎看不到，所以這裡自己包一層深色文字
+  function buildInfoWindowContent(name, address) {
+    return `<div style="color:#1b2140;font-size:13px;line-height:1.5;">`
+      + `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+      + `</div>`;
+  }
+
   function formatRouteDistance(meters) {
     if (typeof meters !== 'number') return '';
     // 沒填目的地時是「離起點多遠」，有填目的地時才是「離路線多遠」
@@ -2165,7 +2173,7 @@
         map.panTo(pos);
         map.setZoom(15);
         new google.maps.InfoWindow({
-          content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+          content: buildInfoWindowContent(name, address)
         }).open(map, marker);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
@@ -2179,7 +2187,7 @@
         map.panTo(pos);
         map.setZoom(15);
         new google.maps.InfoWindow({
-          content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+          content: buildInfoWindowContent(name, address)
         }).open(map, marker);
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
@@ -2329,7 +2337,7 @@
     map.panTo(pos);
     map.setZoom(16);
     new google.maps.InfoWindow({
-      content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+      content: buildInfoWindowContent(name, address)
     }).open(map, discoverMarker);
   }
 
