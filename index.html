@@ -925,6 +925,8 @@
 </div>
 
 <script type="module">
+  import { MarkerClusterer } from '@googlemaps/markerclusterer';
+
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   // 依序嘗試的 model 清單：每個 model 在 Google 那邊是各自獨立的免費額度，
@@ -937,6 +939,7 @@
   let map, directionsService, directionsRenderer;
   let activeInfoWindow = null;
   let placeMarkers = [];
+  let placeMarkerCluster = null;
   let placeCards = [];
   let sdkLoaded = false;
   let sdkLoadPromise = null;
@@ -1477,6 +1480,10 @@
   }
 
   function clearPlaceMarkers() {
+    if (placeMarkerCluster) {
+      placeMarkerCluster.clearMarkers();
+      placeMarkerCluster = null;
+    }
     placeMarkers.forEach(m => m.setMap(null));
     placeMarkers = [];
     placeCards = [];
@@ -1844,6 +1851,15 @@
       + `</div>`;
   }
 
+  // InfoWindow 預設往 marker 正上方彈出，如果 marker 太靠近地圖上緣（搜尋欄、
+  // 工具列下方那一小條），彈窗會被裁掉或蓋住其他 UI。這裡先置中，再把視角往上
+  // 移一點，讓 marker 落在畫面偏下方，上方多留一些淨空的彈窗空間
+  function panForInfoWindow(pos, zoom) {
+    map.panTo(pos);
+    if (typeof zoom === 'number') map.setZoom(zoom);
+    map.panBy(0, -110);
+  }
+
   // 開啟前先收掉前一個開著的 InfoWindow，避免在地圖上切換餐廳時舊的視窗還留著。
   // card 是這間店在清單裡對應的卡片元素，有給的話才會顯示/接上「AI 解析」按鈕
   function openPlaceInfoWindow(p, pos, anchor, card) {
@@ -2202,7 +2218,6 @@
 
       const marker = new google.maps.Marker({
         position: pos,
-        map,
         title: name,
         icon: markerIcon(false),
         label: markerLabel(i),
@@ -2250,8 +2265,7 @@
         <div class="review-list" hidden></div>
       `;
       card.addEventListener('click', () => {
-        map.panTo(pos);
-        map.setZoom(15);
+        panForInfoWindow(pos, 15);
         openPlaceInfoWindow(p, pos, marker, card);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
@@ -2262,8 +2276,7 @@
       marker.addListener('mouseover', () => setPlaceHighlighted(i, true));
       marker.addListener('mouseout', () => setPlaceHighlighted(i, false));
       marker.addListener('click', () => {
-        map.panTo(pos);
-        map.setZoom(15);
+        panForInfoWindow(pos, 15);
         openPlaceInfoWindow(p, pos, marker, card);
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
@@ -2275,6 +2288,12 @@
       placeCards.push(card);
       resultListEl.appendChild(card);
     });
+
+    // 結果多、店家又密集時，個別 marker 會擠成一團互相蓋住；用 clusterer 讓縮小時
+    // 自動收成一顆數字圓點，放大到能分辨個別店家的 zoom 才拆開顯示
+    if (placeMarkers.length) {
+      placeMarkerCluster = new MarkerClusterer({ map, markers: placeMarkers });
+    }
   }
 
   // 「查看評論」＋「✨ AI 摘要」按鈕的共用綁定邏輯，讓一般搜尋結果卡片跟「踩新點」隨機推薦卡片
@@ -2410,8 +2429,7 @@
       },
       zIndex: 999
     });
-    map.panTo(pos);
-    map.setZoom(16);
+    panForInfoWindow(pos, 16);
     openPlaceInfoWindow(p, pos, discoverMarker, discoverResultEl);
   }
 

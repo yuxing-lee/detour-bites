@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "@googlemaps/markerclusterer": "^2.6.2"
   }
 }
