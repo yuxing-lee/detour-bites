@@ -935,6 +935,7 @@
   const MAX_REVIEW_CANDIDATES = 60;
 
   let map, directionsService, directionsRenderer;
+  let activeInfoWindow = null;
   let placeMarkers = [];
   let placeCards = [];
   let sdkLoaded = false;
@@ -1479,6 +1480,10 @@
     placeMarkers.forEach(m => m.setMap(null));
     placeMarkers = [];
     placeCards = [];
+    if (activeInfoWindow) {
+      activeInfoWindow.close();
+      activeInfoWindow = null;
+    }
   }
 
   // 清單編號跟地圖標記共用同一套外觀邏輯：預設是帶數字的橘色小圓點，
@@ -1655,6 +1660,7 @@
     'places.rating',
     'places.userRatingCount',
     'places.priceLevel',
+    'places.priceRange',
     'places.currentOpeningHours.openNow'
   ].join(',');
 
@@ -1758,6 +1764,29 @@
     PRICE_LEVEL_VERY_EXPENSIVE: '$$$$'
   };
 
+  // priceLevel（$/$$/$$$/$$$$ 等級）在很多店家（尤其台灣的店）都沒有資料，
+  // 但新版 Places API 另外提供 priceRange（實際金額區間），有資料時可以拿來當備援顯示
+  function formatMoney(money) {
+    if (!money || money.units == null) return '';
+    const amount = Number(money.units);
+    if (Number.isNaN(amount)) return '';
+    return `${money.currencyCode || ''}${amount}`;
+  }
+
+  function formatPriceRange(priceRange) {
+    if (!priceRange) return '';
+    const start = formatMoney(priceRange.startPrice);
+    const end = formatMoney(priceRange.endPrice);
+    if (start && end) return `${start} - ${end}`;
+    if (start) return `${start} 起`;
+    if (end) return `${end} 以下`;
+    return '';
+  }
+
+  function priceText(p) {
+    return PRICE_LABELS[p.priceLevel] || formatPriceRange(p.priceRange);
+  }
+
   // 帶原本的起點/終點，把這間店當中途停靠點，開起來是一條完整的「起點→餐廳→目的地」路線；
   // 沒填目的地時就直接導航去這間店，不需要中途停靠點
   // 注意：waypoints 參數不支援 place_id: 前綴（實測會被當成純文字搜尋，顯示「找不到」），只能用經緯度
@@ -1790,7 +1819,7 @@
     const ratingText = p.rating
       ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
       : '尚無評分';
-    const price = PRICE_LABELS[p.priceLevel] || '';
+    const price = priceText(p);
     const openNow = p.currentOpeningHours?.openNow;
     const openHtml = openNow === true
       ? '<span style="color:#1a7a4c;font-weight:700;">營業中</span>'
@@ -1808,6 +1837,15 @@
       + `<div style="color:#5a6180;margin-bottom:6px;">${escapeHtml(address)}</div>`
       + `<a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>`
       + `</div>`;
+  }
+
+  // 開啟前先收掉前一個開著的 InfoWindow，避免在地圖上切換餐廳時舊的視窗還留著
+  function openPlaceInfoWindow(p, pos, anchor) {
+    if (activeInfoWindow) activeInfoWindow.close();
+    activeInfoWindow = new google.maps.InfoWindow({
+      content: buildInfoWindowContent(p, pos)
+    });
+    activeInfoWindow.open(map, anchor);
   }
 
   const PRICE_RANK = {
@@ -2157,7 +2195,7 @@
       const rating = p.rating
         ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
         : '尚無評分';
-      const price = PRICE_LABELS[p.priceLevel] || '';
+      const price = priceText(p);
       const openNow = p.currentOpeningHours?.openNow;
       const openStatus = openNow === true
         ? '<span class="open-badge open">營業中</span>'
@@ -2193,9 +2231,7 @@
       card.addEventListener('click', () => {
         map.panTo(pos);
         map.setZoom(15);
-        new google.maps.InfoWindow({
-          content: buildInfoWindowContent(p, pos)
-        }).open(map, marker);
+        openPlaceInfoWindow(p, pos, marker);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
 
@@ -2207,9 +2243,7 @@
       marker.addListener('click', () => {
         map.panTo(pos);
         map.setZoom(15);
-        new google.maps.InfoWindow({
-          content: buildInfoWindowContent(p, pos)
-        }).open(map, marker);
+        openPlaceInfoWindow(p, pos, marker);
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
 
@@ -2305,7 +2339,7 @@
     const rating = p.rating
       ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
       : '尚無評分';
-    const price = PRICE_LABELS[p.priceLevel] || '';
+    const price = priceText(p);
     const openNow = p.currentOpeningHours?.openNow;
     const openStatus = openNow === true
       ? '<span class="open-badge open">營業中</span>'
@@ -2357,9 +2391,7 @@
     });
     map.panTo(pos);
     map.setZoom(16);
-    new google.maps.InfoWindow({
-      content: buildInfoWindowContent(p, pos)
-    }).open(map, discoverMarker);
+    openPlaceInfoWindow(p, pos, discoverMarker);
   }
 
   discoverBtn.addEventListener('click', () => {
