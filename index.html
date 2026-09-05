@@ -22,6 +22,53 @@
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
 
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes cardEnter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes popIn {
+    0% { opacity: 0; transform: scale(0.92); }
+    60% { opacity: 1; transform: scale(1.03); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes starPop {
+    0% { transform: scale(0.6); }
+    60% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes diceRoll {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(-12deg); }
+    50% { transform: rotate(10deg); }
+    75% { transform: rotate(-6deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  @keyframes modalPopIn {
+    from { opacity: 0; transform: scale(0.94) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+
   html, body {
     margin: 0;
     padding: 0;
@@ -81,11 +128,13 @@
     padding: 10px 12px;
     border-radius: 6px;
     font-size: 14px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   input:focus, select:focus {
     outline: none;
     border-color: var(--amber);
+    box-shadow: 0 0 0 3px rgba(242, 163, 64, 0.15);
   }
 
   .row2 {
@@ -105,11 +154,37 @@
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  button:hover { background: #ffb85c; }
-  button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; }
+  button:hover { background: #ffb85c; transform: translateY(-1px); }
+  button:active { transform: translateY(0) scale(0.97); }
+  button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  #searchBtn:hover, .discover-btn:hover {
+    box-shadow: 0 8px 20px rgba(242, 163, 64, 0.35);
+  }
+
+  #searchBtn.is-loading {
+    color: transparent;
+    position: relative;
+  }
+
+  #searchBtn.is-loading::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin: -9px 0 0 -9px;
+    border: 2px solid rgba(34, 18, 2, 0.35);
+    border-top-color: #221202;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .discover-btn.rolling { animation: diceRoll 0.5s ease; }
 
   .input-with-button {
     display: flex;
@@ -141,11 +216,13 @@
     overflow-y: auto;
     z-index: 30;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    animation: cardEnter 0.15s ease;
   }
 
   .autocomplete-item {
     padding: 8px 12px;
     cursor: pointer;
+    transition: background 0.12s ease;
   }
 
   .autocomplete-item:hover,
@@ -213,9 +290,11 @@
     border-radius: 8px;
     padding: 10px 12px;
     cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
   }
 
-  .route-option.selected { border-color: var(--amber); }
+  .route-option:hover { transform: translateY(-1px); }
+  .route-option.selected { border-color: var(--amber); background: #141a35; }
 
   .route-option input[type="radio"] {
     width: auto;
@@ -326,6 +405,7 @@
     justify-content: center;
     z-index: 100;
     padding: 20px;
+    animation: fadeIn 0.2s ease;
   }
 
   .modal {
@@ -338,6 +418,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    animation: modalPopIn 0.25s cubic-bezier(.34, 1.56, .64, 1);
   }
 
   .modal-header {
@@ -363,9 +444,10 @@
     font-size: 16px;
     cursor: pointer;
     padding: 4px;
+    transition: color 0.15s ease, transform 0.15s ease;
   }
 
-  .modal-close:hover { color: var(--paper); }
+  .modal-close:hover { color: var(--paper); transform: rotate(90deg) scale(1.15); }
 
   .modal-toolbar {
     display: flex;
@@ -429,6 +511,10 @@
     border-color: var(--good);
   }
 
+  .place-card.discover-card {
+    animation: popIn 0.35s cubic-bezier(.34, 1.56, .64, 1) both;
+  }
+
   .card-actions {
     display: flex;
     gap: 8px;
@@ -463,10 +549,11 @@
     padding: 0 1px;
     margin: 0;
     cursor: pointer;
+    transition: transform 0.15s ease, color 0.15s ease;
   }
 
-  .star-btn:hover { color: var(--amber-dim); }
-  .star-btn.filled { color: var(--amber); }
+  .star-btn:hover { color: var(--amber-dim); transform: scale(1.25); }
+  .star-btn.filled { color: var(--amber); animation: starPop 0.3s ease; }
 
   .clear-eaten-btn {
     background: transparent;
@@ -476,9 +563,10 @@
     padding: 0 2px;
     margin: 0;
     cursor: pointer;
+    transition: color 0.15s ease, transform 0.15s ease;
   }
 
-  .clear-eaten-btn:hover { color: #e6816f; }
+  .clear-eaten-btn:hover { color: #e6816f; transform: scale(1.2) rotate(90deg); }
 
   .place-card {
     background: #0f1428;
@@ -487,10 +575,12 @@
     padding: 12px 14px;
     margin-bottom: 10px;
     cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    animation: cardEnter 0.3s ease both;
   }
 
-  .place-card:hover { border-color: var(--amber-dim); }
+  .place-card:hover { border-color: var(--amber-dim); transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+  .place-card:active { transform: translateY(-1px); }
 
   .place-card .name {
     font-size: 14px;
@@ -530,12 +620,14 @@
     font-weight: 600;
     font-size: 13px;
     border-radius: 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
   }
 
   .place-card .nav-link:hover,
   .place-card .nav-link:active {
     background: var(--amber-dim);
     color: #221202;
+    transform: translateY(-1px);
   }
 
   .review-match {
@@ -547,6 +639,7 @@
     border-radius: 6px;
     padding: 6px 8px;
     line-height: 1.5;
+    animation: fadeIn 0.25s ease;
   }
 
   .review-toggle {
@@ -569,6 +662,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    animation: fadeIn 0.25s ease;
   }
 
   .review-item {
@@ -609,6 +703,7 @@
     border-radius: 6px;
     padding: 8px 10px;
     line-height: 1.6;
+    animation: fadeIn 0.25s ease;
   }
 
   .main {
@@ -1779,7 +1874,7 @@
     resultListEl.innerHTML = '';
     clearPlaceMarkers();
 
-    places.forEach(p => {
+    places.forEach((p, i) => {
       const pos = { lat: p.location.latitude, lng: p.location.longitude };
       const name = p.displayName?.text || '(未命名)';
       const address = p.formattedAddress || '';
@@ -1801,6 +1896,7 @@
 
       const card = document.createElement('div');
       card.className = 'place-card';
+      card.style.animationDelay = `${Math.min(i, 12) * 25}ms`;
       const rating = p.rating
         ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
         : '尚無評分';
@@ -2004,6 +2100,11 @@
   discoverBtn.addEventListener('click', () => {
     if (!lastResults.length) return;
 
+    discoverBtn.classList.remove('rolling');
+    void discoverBtn.offsetWidth;
+    discoverBtn.classList.add('rolling');
+    setTimeout(() => discoverBtn.classList.remove('rolling'), 500);
+
     let candidates = lastResults.slice();
     if (openNowOnlyEl.checked) {
       candidates = candidates.filter(p => p.currentOpeningHours?.openNow === true);
@@ -2043,6 +2144,7 @@
     const keyword = keywordInput.value.trim();
 
     searchBtn.disabled = true;
+    searchBtn.classList.add('is-loading');
 
     try {
       const path = allRoutes[routeIndex].overview_path;
@@ -2119,6 +2221,7 @@
       setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
     } finally {
       searchBtn.disabled = false;
+      searchBtn.classList.remove('is-loading');
     }
   }
 
@@ -2134,6 +2237,7 @@
     saveSearch();
 
     searchBtn.disabled = true;
+    searchBtn.classList.add('is-loading');
     routeOptionsEl.hidden = true;
     setStatus('載入地圖服務中…');
 
@@ -2163,6 +2267,7 @@
       console.error(err);
       setStatus(err.message || '發生錯誤，請檢查 API key 與網路連線', 'error');
       searchBtn.disabled = false;
+      searchBtn.classList.remove('is-loading');
     }
   }
 
