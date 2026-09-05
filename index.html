@@ -1837,13 +1837,39 @@
       : base + `&destination=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`;
   }
 
+  // websiteUri 常見的網域是這些線上訂位平台本身（餐廳沒自架官網、直接把訂位頁當「網站」登記），
+  // 這種情況可以比對網域先告訴使用者「這是訂位連結」；比對不到的話沒辦法知道網址底下有沒有訂位頁面
+  // （例如官網自己架、藏在某個子頁面），只能顯示中性的「官方網站」讓使用者自己找
+  const RESERVATION_PLATFORM_DOMAINS = [
+    'inline.app',
+    'eztable.com',
+    'tablecheck.com',
+    'opentable.com',
+    'resy.com',
+    'quandoo.com',
+    'chope.co',
+    'sevenrooms.com',
+    'zenchef.com',
+    'formitable.com'
+  ];
+
+  function isReservationPlatformUrl(urlStr) {
+    try {
+      const host = new URL(urlStr).hostname.toLowerCase();
+      return RESERVATION_PLATFORM_DOMAINS.some(domain => host === domain || host.endsWith(`.${domain}`));
+    } catch {
+      return false;
+    }
+  }
+
   // Places API 的 reservable 欄位屬於更貴的 Enterprise + Atmosphere SKU，且資料涵蓋率
   // 未知（跟 priceLevel 一樣，很多店家可能查不到），不值得為了這個欄位讓每次搜尋都被
   // 算成更貴的等級。改成只要查得到官網（websiteUri，跟其他既有欄位同一個 SKU 不加價），
   // 就顯示連結讓使用者自己去確認能不能訂位，不在按鈕文字上暗示「這間店一定能訂位」
   function websiteLinkHtml(p, extraAttrs) {
     if (!p.websiteUri) return '';
-    return `<a href="${escapeHtml(p.websiteUri)}" target="_blank" rel="noopener noreferrer" ${extraAttrs || ''}>🔗 官方網站</a>`;
+    const label = isReservationPlatformUrl(p.websiteUri) ? '🍽️ 線上訂位' : '🔗 官方網站';
+    return `<a href="${escapeHtml(p.websiteUri)}" target="_blank" rel="noopener noreferrer" ${extraAttrs || ''}>${label}</a>`;
   }
 
   function formatRouteDistance(meters) {
