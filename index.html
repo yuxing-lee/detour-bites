@@ -656,6 +656,29 @@
     transform: translateY(-1px);
   }
 
+  .place-card .reserve-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    min-height: 36px;
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+    border-radius: 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+
+  .place-card .reserve-link:hover,
+  .place-card .reserve-link:active {
+    background: var(--amber-dim);
+    color: #221202;
+    transform: translateY(-1px);
+  }
+
   .review-match {
     margin-top: 8px;
     font-size: 12px;
@@ -1673,7 +1696,9 @@
     'places.userRatingCount',
     'places.priceLevel',
     'places.priceRange',
-    'places.currentOpeningHours.openNow'
+    'places.currentOpeningHours.openNow',
+    'places.reservable',
+    'places.websiteUri'
   ].join(',');
 
   // 有填關鍵字時：改用 Text Search (New)，比對更接近 Google Maps 打字搜尋的語意/相關性
@@ -1813,6 +1838,13 @@
       : base + `&destination=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`;
   }
 
+  // Places API 只會告訴我們「這間店支援訂位」（reservable），不會給實際的空位資料或訂位平台連結，
+  // 所以只能連去店家自己的網站讓使用者自己查/訂，查不到 websiteUri 的話就沒有連結可放
+  function reservationLinkHtml(p, extraAttrs) {
+    if (!p.reservable || !p.websiteUri) return '';
+    return `<a href="${escapeHtml(p.websiteUri)}" target="_blank" rel="noopener noreferrer" ${extraAttrs || ''}>🍽️ 前往訂位</a>`;
+  }
+
   function formatRouteDistance(meters) {
     if (typeof meters !== 'number') return '';
     // 沒填目的地時是「離起點多遠」，有填目的地時才是「離路線多遠」
@@ -1846,13 +1878,14 @@
     const aiBtnHtml = GEMINI_API_KEY
       ? `<button type="button" class="iw-ai-btn" style="margin-left:10px;border:none;background:none;color:#8a5a1f;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font-size:13px;">✨ AI 解析</button>`
       : '';
+    const reservationHtml = reservationLinkHtml(p, 'style="margin-left:10px;color:#8a5a1f;font-weight:700;text-decoration:underline;"');
 
     return `<div style="color:#1b2140;font-size:13px;line-height:1.6;max-width:220px;">`
       + `<div style="font-weight:700;font-size:14px;margin-bottom:4px;">${escapeHtml(name)}</div>`
       + `<div style="margin-bottom:2px;">${metaLine}</div>`
       + (routeDistanceText ? `<div style="margin-bottom:2px;">📍 ${escapeHtml(routeDistanceText)}</div>` : '')
       + `<div style="color:#5a6180;margin-bottom:6px;">${escapeHtml(address)}</div>`
-      + `<div><a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>${aiBtnHtml}</div>`
+      + `<div><a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>${reservationHtml}${aiBtnHtml}</div>`
       + `</div>`;
   }
 
@@ -2261,6 +2294,7 @@
         </div>
         ${matchNote ? `<div class="review-match">${matchNote}</div>` : ''}
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
+        ${reservationLinkHtml(p, 'class="reserve-link" title="前往店家網站查詢/預訂座位"')}
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
           ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
@@ -2274,6 +2308,7 @@
         openPlaceInfoWindow(p, pos, marker, card);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
+      card.querySelector('.reserve-link')?.addEventListener('click', (e) => e.stopPropagation());
 
       // 清單卡片 ↔ 地圖標記雙向連動：滑過任一邊，另一邊會一起亮起來
       card.addEventListener('mouseenter', () => setPlaceHighlighted(i, true));
@@ -2412,6 +2447,7 @@
           ${openStatus}
         </div>
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
+        ${reservationLinkHtml(p, 'class="reserve-link" title="前往店家網站查詢/預訂座位"')}
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
           ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
