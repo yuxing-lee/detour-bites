@@ -656,7 +656,7 @@
     transform: translateY(-1px);
   }
 
-  .place-card .reserve-link {
+  .place-card .website-link {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -672,8 +672,8 @@
     transition: background 0.15s ease, transform 0.15s ease;
   }
 
-  .place-card .reserve-link:hover,
-  .place-card .reserve-link:active {
+  .place-card .website-link:hover,
+  .place-card .website-link:active {
     background: var(--amber-dim);
     color: #221202;
     transform: translateY(-1px);
@@ -1697,7 +1697,6 @@
     'places.priceLevel',
     'places.priceRange',
     'places.currentOpeningHours.openNow',
-    'places.reservable',
     'places.websiteUri'
   ].join(',');
 
@@ -1838,11 +1837,13 @@
       : base + `&destination=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`;
   }
 
-  // Places API 只會告訴我們「這間店支援訂位」（reservable），不會給實際的空位資料或訂位平台連結，
-  // 所以只能連去店家自己的網站讓使用者自己查/訂，查不到 websiteUri 的話就沒有連結可放
-  function reservationLinkHtml(p, extraAttrs) {
-    if (!p.reservable || !p.websiteUri) return '';
-    return `<a href="${escapeHtml(p.websiteUri)}" target="_blank" rel="noopener noreferrer" ${extraAttrs || ''}>🍽️ 前往訂位</a>`;
+  // Places API 的 reservable 欄位屬於更貴的 Enterprise + Atmosphere SKU，且資料涵蓋率
+  // 未知（跟 priceLevel 一樣，很多店家可能查不到），不值得為了這個欄位讓每次搜尋都被
+  // 算成更貴的等級。改成只要查得到官網（websiteUri，跟其他既有欄位同一個 SKU 不加價），
+  // 就顯示連結讓使用者自己去確認能不能訂位，不在按鈕文字上暗示「這間店一定能訂位」
+  function websiteLinkHtml(p, extraAttrs) {
+    if (!p.websiteUri) return '';
+    return `<a href="${escapeHtml(p.websiteUri)}" target="_blank" rel="noopener noreferrer" ${extraAttrs || ''}>🔗 官方網站</a>`;
   }
 
   function formatRouteDistance(meters) {
@@ -1878,14 +1879,14 @@
     const aiBtnHtml = GEMINI_API_KEY
       ? `<button type="button" class="iw-ai-btn" style="margin-left:10px;border:none;background:none;color:#8a5a1f;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font-size:13px;">✨ AI 解析</button>`
       : '';
-    const reservationHtml = reservationLinkHtml(p, 'style="margin-left:10px;color:#8a5a1f;font-weight:700;text-decoration:underline;"');
+    const websiteHtml = websiteLinkHtml(p, 'style="margin-left:10px;color:#8a5a1f;font-weight:700;text-decoration:underline;"');
 
     return `<div style="color:#1b2140;font-size:13px;line-height:1.6;max-width:220px;">`
       + `<div style="font-weight:700;font-size:14px;margin-bottom:4px;">${escapeHtml(name)}</div>`
       + `<div style="margin-bottom:2px;">${metaLine}</div>`
       + (routeDistanceText ? `<div style="margin-bottom:2px;">📍 ${escapeHtml(routeDistanceText)}</div>` : '')
       + `<div style="color:#5a6180;margin-bottom:6px;">${escapeHtml(address)}</div>`
-      + `<div><a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>${reservationHtml}${aiBtnHtml}</div>`
+      + `<div><a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>${websiteHtml}${aiBtnHtml}</div>`
       + `</div>`;
   }
 
@@ -2294,7 +2295,7 @@
         </div>
         ${matchNote ? `<div class="review-match">${matchNote}</div>` : ''}
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
-        ${reservationLinkHtml(p, 'class="reserve-link" title="前往店家網站查詢/預訂座位"')}
+        ${websiteLinkHtml(p, 'class="website-link" title="前往店家官網"')}
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
           ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
@@ -2308,7 +2309,7 @@
         openPlaceInfoWindow(p, pos, marker, card);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
-      card.querySelector('.reserve-link')?.addEventListener('click', (e) => e.stopPropagation());
+      card.querySelector('.website-link')?.addEventListener('click', (e) => e.stopPropagation());
 
       // 清單卡片 ↔ 地圖標記雙向連動：滑過任一邊，另一邊會一起亮起來
       card.addEventListener('mouseenter', () => setPlaceHighlighted(i, true));
@@ -2447,7 +2448,7 @@
           ${openStatus}
         </div>
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
-        ${reservationLinkHtml(p, 'class="reserve-link" title="前往店家網站查詢/預訂座位"')}
+        ${websiteLinkHtml(p, 'class="website-link" title="前往店家官網"')}
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
           ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
