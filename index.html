@@ -22,6 +22,53 @@
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
 
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes cardEnter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes popIn {
+    0% { opacity: 0; transform: scale(0.92); }
+    60% { opacity: 1; transform: scale(1.03); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes starPop {
+    0% { transform: scale(0.6); }
+    60% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes diceRoll {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(-12deg); }
+    50% { transform: rotate(10deg); }
+    75% { transform: rotate(-6deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  @keyframes modalPopIn {
+    from { opacity: 0; transform: scale(0.94) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+
   html, body {
     margin: 0;
     padding: 0;
@@ -81,11 +128,13 @@
     padding: 10px 12px;
     border-radius: 6px;
     font-size: 14px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   input:focus, select:focus {
     outline: none;
     border-color: var(--amber);
+    box-shadow: 0 0 0 3px rgba(242, 163, 64, 0.15);
   }
 
   .row2 {
@@ -105,11 +154,37 @@
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  button:hover { background: #ffb85c; }
-  button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; }
+  button:hover { background: #ffb85c; transform: translateY(-1px); }
+  button:active { transform: translateY(0) scale(0.97); }
+  button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  #searchBtn:hover, .discover-btn:hover {
+    box-shadow: 0 8px 20px rgba(242, 163, 64, 0.35);
+  }
+
+  #searchBtn.is-loading {
+    color: transparent;
+    position: relative;
+  }
+
+  #searchBtn.is-loading::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin: -9px 0 0 -9px;
+    border: 2px solid rgba(34, 18, 2, 0.35);
+    border-top-color: #221202;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .discover-btn.rolling { animation: diceRoll 0.5s ease; }
 
   .input-with-button {
     display: flex;
@@ -141,11 +216,13 @@
     overflow-y: auto;
     z-index: 30;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    animation: cardEnter 0.15s ease;
   }
 
   .autocomplete-item {
     padding: 8px 12px;
     cursor: pointer;
+    transition: background 0.12s ease;
   }
 
   .autocomplete-item:hover,
@@ -213,9 +290,11 @@
     border-radius: 8px;
     padding: 10px 12px;
     cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
   }
 
-  .route-option.selected { border-color: var(--amber); }
+  .route-option:hover { transform: translateY(-1px); }
+  .route-option.selected { border-color: var(--amber); background: #141a35; }
 
   .route-option input[type="radio"] {
     width: auto;
@@ -326,6 +405,7 @@
     justify-content: center;
     z-index: 100;
     padding: 20px;
+    animation: fadeIn 0.2s ease;
   }
 
   .modal {
@@ -338,6 +418,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    animation: modalPopIn 0.25s cubic-bezier(.34, 1.56, .64, 1);
   }
 
   .modal-header {
@@ -363,9 +444,10 @@
     font-size: 16px;
     cursor: pointer;
     padding: 4px;
+    transition: color 0.15s ease, transform 0.15s ease;
   }
 
-  .modal-close:hover { color: var(--paper); }
+  .modal-close:hover { color: var(--paper); transform: rotate(90deg) scale(1.15); }
 
   .modal-toolbar {
     display: flex;
@@ -429,6 +511,10 @@
     border-color: var(--good);
   }
 
+  .place-card.discover-card {
+    animation: popIn 0.35s cubic-bezier(.34, 1.56, .64, 1) both;
+  }
+
   .card-actions {
     display: flex;
     gap: 8px;
@@ -463,10 +549,11 @@
     padding: 0 1px;
     margin: 0;
     cursor: pointer;
+    transition: transform 0.15s ease, color 0.15s ease;
   }
 
-  .star-btn:hover { color: var(--amber-dim); }
-  .star-btn.filled { color: var(--amber); }
+  .star-btn:hover { color: var(--amber-dim); transform: scale(1.25); }
+  .star-btn.filled { color: var(--amber); animation: starPop 0.3s ease; }
 
   .clear-eaten-btn {
     background: transparent;
@@ -476,9 +563,10 @@
     padding: 0 2px;
     margin: 0;
     cursor: pointer;
+    transition: color 0.15s ease, transform 0.15s ease;
   }
 
-  .clear-eaten-btn:hover { color: #e6816f; }
+  .clear-eaten-btn:hover { color: #e6816f; transform: scale(1.2) rotate(90deg); }
 
   .place-card {
     background: #0f1428;
@@ -487,16 +575,42 @@
     padding: 12px 14px;
     margin-bottom: 10px;
     cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    animation: cardEnter 0.3s ease both;
   }
 
-  .place-card:hover { border-color: var(--amber-dim); }
+  .place-card:hover { border-color: var(--amber-dim); transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+  .place-card:active { transform: translateY(-1px); }
+
+  .place-card.highlighted {
+    border-color: var(--amber);
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 2px rgba(242, 163, 64, 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
+  }
 
   .place-card .name {
     font-size: 14px;
     font-weight: 600;
     color: var(--paper);
   }
+
+  .place-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: #221202;
+    font-size: 10.5px;
+    font-weight: 700;
+    vertical-align: middle;
+    transition: transform 0.15s ease;
+  }
+
+  .place-card.highlighted .place-index { transform: scale(1.15); }
 
   .place-card .meta {
     font-size: 12px;
@@ -530,12 +644,14 @@
     font-weight: 600;
     font-size: 13px;
     border-radius: 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
   }
 
   .place-card .nav-link:hover,
   .place-card .nav-link:active {
     background: var(--amber-dim);
     color: #221202;
+    transform: translateY(-1px);
   }
 
   .review-match {
@@ -547,6 +663,7 @@
     border-radius: 6px;
     padding: 6px 8px;
     line-height: 1.5;
+    animation: fadeIn 0.25s ease;
   }
 
   .review-toggle {
@@ -569,6 +686,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    animation: fadeIn 0.25s ease;
   }
 
   .review-item {
@@ -609,6 +727,7 @@
     border-radius: 6px;
     padding: 8px 10px;
     line-height: 1.6;
+    animation: fadeIn 0.25s ease;
   }
 
   .main {
@@ -771,6 +890,7 @@
 
   let map, directionsService, directionsRenderer;
   let placeMarkers = [];
+  let placeCards = [];
   let sdkLoaded = false;
   let sdkLoadPromise = null;
   let allRoutes = [];
@@ -1269,6 +1389,31 @@
   function clearPlaceMarkers() {
     placeMarkers.forEach(m => m.setMap(null));
     placeMarkers = [];
+    placeCards = [];
+  }
+
+  // 清單編號跟地圖標記共用同一套外觀邏輯：預設是帶數字的橘色小圓點，
+  // 滑鼠移到清單卡片或地圖標記其中一邊時，兩邊會一起放大變色，讓使用者看得出兩者對應同一間店
+  function markerIcon(highlighted) {
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: highlighted ? 13 : 9,
+      fillColor: highlighted ? '#ffb85c' : '#f2a340',
+      fillOpacity: 1,
+      strokeColor: '#12172b',
+      strokeWeight: highlighted ? 2.5 : 1.5
+    };
+  }
+
+  function markerLabel(index) {
+    return { text: String(index + 1), color: '#12172b', fontSize: '11px', fontWeight: '700' };
+  }
+
+  function setPlaceHighlighted(index, isOn) {
+    const marker = placeMarkers[index];
+    const card = placeCards[index];
+    if (marker) marker.setIcon(markerIcon(isOn));
+    if (card) card.classList.toggle('highlighted', isOn);
   }
 
   function summarizeRoute(route) {
@@ -1570,8 +1715,38 @@
     return (review.text?.text || review.originalText?.text || '').trim();
   }
 
-  function reviewMentions(review, keyword) {
-    return reviewText(review).toLowerCase().includes(keyword.toLowerCase());
+  // 免 AI 的同義詞擴充：把「想吃的餐點」拆成多個詞，每個詞再對照下面的同義詞群組展開，
+  // 只要評論裡出現任何一個展開後的詞就算比對到，緩解使用者打法跟評論用字不一致的問題
+  // （例如打「便宜」也能比對到寫「划算」「平價」的評論）。清單不求全，之後真的比對不到再交給 AI。
+  const DISH_SYNONYM_GROUPS = [
+    ['便宜', '划算', '平價', '俗又大碗', '俗擱大碗', 'cp值高', 'CP值高'],
+    ['甜點', '甜食', '甜的', '甜品', '飯後甜點'],
+    ['辣', '麻辣', '辣味', '夠辣'],
+    ['早餐', '早午餐', 'brunch', 'Brunch'],
+    ['消夜', '宵夜'],
+    ['約會', '氣氛好', '氛圍佳', '浪漫'],
+    ['特別', '特色', '招牌', '必點', '推薦菜'],
+    ['清淡', '不辣', '養生'],
+    ['份量大', '份量足', '吃得飽', '大碗']
+  ];
+
+  function expandDishTokens(rawText) {
+    const tokens = rawText.split(/[、,，\/\s]+/).map(t => t.trim()).filter(Boolean);
+    const expanded = new Set();
+    (tokens.length ? tokens : [rawText.trim()]).filter(Boolean).forEach(tok => {
+      expanded.add(tok);
+      DISH_SYNONYM_GROUPS.forEach(group => {
+        if (group.some(w => tok.includes(w) || w.includes(tok))) {
+          group.forEach(w => expanded.add(w));
+        }
+      });
+    });
+    return Array.from(expanded);
+  }
+
+  function reviewMentionsAny(review, tokens) {
+    const text = reviewText(review).toLowerCase();
+    return tokens.some(t => text.includes(t.toLowerCase()));
   }
 
   // 找關鍵字附近的一小段文字當作預覽，找不到就退回開頭那段
@@ -1690,6 +1865,30 @@
     }
   }
 
+  // 免 AI、每次搜尋都會自動跑一遍的關鍵字清理：用固定的規則把常見的口語篩選詞
+  // （現在有開、便宜等）從關鍵字裡挑出來變成篩選條件，剩下的文字才拿去做地圖文字搜尋，
+  // 避免這些字混在 textQuery 裡稀釋掉真正的料理名稱/店名關鍵字。跟 parseKeywordWithGemini
+  // 回傳同一種格式，方便共用下游邏輯；規則涵蓋不到的說法（更抽象的口語）才會交給 AI 解析。
+  const KEYWORD_FILTER_PATTERNS = [
+    { re: /(現在|目前)?(營業中|還在營業|有開著|還有開|有開|開著)/g, flag: 'openNow' },
+    { re: /(便宜|划算|平價|俗又大碗|俗擱大碗|cp值高)/gi, flag: 'preferCheap' }
+  ];
+
+  function localParseKeyword(rawText) {
+    let keyword = rawText;
+    let openNow = false;
+    let preferCheap = false;
+    KEYWORD_FILTER_PATTERNS.forEach(({ re, flag }) => {
+      if (re.test(keyword)) {
+        if (flag === 'openNow') openNow = true;
+        if (flag === 'preferCheap') preferCheap = true;
+        keyword = keyword.replace(re, '');
+      }
+    });
+    keyword = keyword.replace(/[，,、]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return { keyword, openNow, preferCheap };
+  }
+
   // 把使用者在關鍵字欄位打的口語文字，解析成搜尋關鍵字 + 是否只看營業中 + 是否偏好便宜
   async function parseKeywordWithGemini(rawText) {
     const prompt = `你是餐廳搜尋助手。使用者在「關鍵字」欄位輸入了以下文字，裡面可能包含料理名稱、店名，也可能夾雜口語化的篩選需求（例如想要便宜、想要現在還有營業）。請解析成三個欄位：
@@ -1707,6 +1906,30 @@
         preferCheap: { type: 'BOOLEAN' }
       },
       required: ['keyword', 'openNow', 'preferCheap']
+    });
+  }
+
+  // 「想吃的餐點」的 AI 備援：只有在同義詞擴充比對完全找不到符合的店家時才會呼叫，
+  // 一次把所有候選店家的評論摘錄丟給 Gemini 做語意判斷（而不是每間店各呼叫一次），
+  // 藉此在不大量增加 API 用量的前提下，也能應付「氣氛好」「約會」這類同義詞庫涵蓋不到的模糊描述
+  async function semanticMatchDishKeyword(dishKeyword, candidates) {
+    const entries = candidates.map((c, i) => {
+      const snippets = (c._reviews || [])
+        .slice(0, 5)
+        .map(r => reviewText(r).slice(0, 150))
+        .filter(Boolean)
+        .join(' / ');
+      return `${i}. ${c.displayName?.text || '(未命名)'}：${snippets || '（無評論內容）'}`;
+    }).join('\n');
+
+    const prompt = `你是餐廳評論比對助手。使用者想找「${dishKeyword}」，可能是具體菜色，也可能是氣氛、價位、場合等比較抽象的描述。以下是候選餐廳的編號、店名跟幾則評論摘錄，請判斷哪些餐廳的評論內容顯示這間店符合使用者想找的東西（不需要逐字比對，語意相符即可），回傳符合的餐廳編號陣列（從 0 開始）；都不符合就回傳空陣列。\n\n${entries}`;
+
+    return callGemini(prompt, {
+      type: 'OBJECT',
+      properties: {
+        matchedIndexes: { type: 'ARRAY', items: { type: 'INTEGER' } }
+      },
+      required: ['matchedIndexes']
     });
   }
 
@@ -1779,7 +2002,7 @@
     resultListEl.innerHTML = '';
     clearPlaceMarkers();
 
-    places.forEach(p => {
+    places.forEach((p, i) => {
       const pos = { lat: p.location.latitude, lng: p.location.longitude };
       const name = p.displayName?.text || '(未命名)';
       const address = p.formattedAddress || '';
@@ -1788,19 +2011,15 @@
         position: pos,
         map,
         title: name,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 6,
-          fillColor: '#f2a340',
-          fillOpacity: 1,
-          strokeColor: '#12172b',
-          strokeWeight: 1.5
-        }
+        icon: markerIcon(false),
+        label: markerLabel(i),
+        zIndex: 10
       });
       placeMarkers.push(marker);
 
       const card = document.createElement('div');
       card.className = 'place-card';
+      card.style.animationDelay = `${Math.min(i, 12) * 25}ms`;
       const rating = p.rating
         ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
         : '尚無評分';
@@ -1820,9 +2039,12 @@
         + `&travelmode=driving`;
       const routeDistanceText = formatRouteDistance(p._routeDistance);
       const matchedSnippet = p._matchedReview ? reviewSnippet(p._matchedReview, p._matchedKeyword || '') : '';
+      const matchNote = matchedSnippet
+        ? `💬 評論提到：「${escapeHtml(matchedSnippet)}」`
+        : (p._aiMatched ? `✨ AI 判斷這裡符合「${escapeHtml(p._matchedKeyword || '')}」` : '');
       const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
       card.innerHTML = `
-        <div class="name">${escapeHtml(name)}</div>
+        <div class="name"><span class="place-index">${i + 1}</span>${escapeHtml(name)}</div>
         <div class="meta">
           ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
           <span class="rating">${rating}</span>
@@ -1830,7 +2052,7 @@
           ${price ? `<span>${price}</span>` : ''}
           ${openStatus}
         </div>
-        ${matchedSnippet ? `<div class="review-match">💬 評論提到：「${escapeHtml(matchedSnippet)}」</div>` : ''}
+        ${matchNote ? `<div class="review-match">${matchNote}</div>` : ''}
         <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener noreferrer" title="在 Google Maps 開啟含原本起點/終點的完整路線">導航 →</a>
         <div class="card-actions">
           <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
@@ -1849,10 +2071,25 @@
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
 
+      // 清單卡片 ↔ 地圖標記雙向連動：滑過任一邊，另一邊會一起亮起來
+      card.addEventListener('mouseenter', () => setPlaceHighlighted(i, true));
+      card.addEventListener('mouseleave', () => setPlaceHighlighted(i, false));
+      marker.addListener('mouseover', () => setPlaceHighlighted(i, true));
+      marker.addListener('mouseout', () => setPlaceHighlighted(i, false));
+      marker.addListener('click', () => {
+        map.panTo(pos);
+        map.setZoom(15);
+        new google.maps.InfoWindow({
+          content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+        }).open(map, marker);
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
       wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
 
       wireReviewAndAiActions(card, p, name);
 
+      placeCards.push(card);
       resultListEl.appendChild(card);
     });
   }
@@ -2004,6 +2241,11 @@
   discoverBtn.addEventListener('click', () => {
     if (!lastResults.length) return;
 
+    discoverBtn.classList.remove('rolling');
+    void discoverBtn.offsetWidth;
+    discoverBtn.classList.add('rolling');
+    setTimeout(() => discoverBtn.classList.remove('rolling'), 500);
+
     let candidates = lastResults.slice();
     if (openNowOnlyEl.checked) {
       candidates = candidates.filter(p => p.currentOpeningHours?.openNow === true);
@@ -2038,11 +2280,23 @@
     renderDiscoverResult(picked);
   });
 
-  async function searchAlongRoute(routeIndex) {
+  async function searchAlongRoute(routeIndex, keywordOverride) {
     const radius = parseInt(radiusInput.value, 10) || 1200;
-    const keyword = keywordInput.value.trim();
+    // keywordOverride 只有在「關鍵字搜不到結果、AI 重新解析後自動重試」時才會帶入（見下方零結果備援），
+    // 用 typeof 判斷而不是單純看真假值，這樣才能區分「沒有帶」跟「AI 解析出空字串」兩種狀況
+    const isFallbackRetry = typeof keywordOverride === 'string';
+    const rawKeyword = isFallbackRetry ? keywordOverride : keywordInput.value.trim();
+    const localParsed = localParseKeyword(rawKeyword);
+    const keyword = localParsed.keyword;
+    if (!isFallbackRetry) {
+      // 只在使用者這次真正送出的關鍵字上套用偵測到的篩選條件，AI 備援重試時不重複套用，
+      // 避免使用者手動取消勾選後，重試又把它勾回去
+      if (localParsed.openNow) openNowOnlyEl.checked = true;
+      if (localParsed.preferCheap) sortSelectEl.value = 'price';
+    }
 
     searchBtn.disabled = true;
+    searchBtn.classList.add('is-loading');
 
     try {
       const path = allRoutes[routeIndex].overview_path;
@@ -2075,8 +2329,27 @@
         p._routeProgress = proj.progress;
       });
 
+      // 關鍵字搜尋零結果備援：如果打了關鍵字卻完全沒找到餐廳，可能是打得太口語/模糊，
+      // 讓 Google 文字搜尋字面比對失敗。只在「第一次搜尋、還沒重試過」時觸發一次 AI 重新解析，
+      // 避免使用者手動取消掉的篩選條件被反覆蓋回去，也避免無限重試
+      if (!isFallbackRetry && keyword && lastResults.length === 0 && GEMINI_API_KEY) {
+        setStatus(`沒有找到符合「${rawKeyword}」的餐廳，嘗試用 AI 重新解析關鍵字…`);
+        try {
+          const aiParsed = await parseKeywordWithGemini(rawKeyword);
+          const aiKeyword = (aiParsed.keyword || '').trim();
+          if (aiKeyword && aiKeyword !== keyword) {
+            if (aiParsed.openNow) openNowOnlyEl.checked = true;
+            if (aiParsed.preferCheap) sortSelectEl.value = 'price';
+            return await searchAlongRoute(routeIndex, aiKeyword);
+          }
+        } catch (err) {
+          console.warn('AI 關鍵字備援解析失敗：', err);
+        }
+      }
+
       const dishKeyword = dishKeywordInput.value.trim();
       let cappedCandidateCount = 0;
+      let dishAiMatchedCount = 0;
       if (dishKeyword) {
         // 依順路距離排序後只取前 MAX_REVIEW_CANDIDATES 間去查評論，
         // 避免路線很長、候選店家很多時打爆 Place Details 配額
@@ -2086,13 +2359,14 @@
           .slice(0, MAX_REVIEW_CANDIDATES);
         cappedCandidateCount = candidates.length;
 
+        const dishTokens = expandDishTokens(dishKeyword);
         const matched = [];
         for (let i = 0; i < candidates.length; i++) {
           setStatus(`比對評論中…(${i + 1}/${candidates.length})`);
           const place = candidates[i];
           const reviews = await fetchPlaceReviews(place.id);
           if (reviews !== null) place._reviews = reviews;
-          const hit = (reviews || []).find(r => reviewMentions(r, dishKeyword));
+          const hit = (reviews || []).find(r => reviewMentionsAny(r, dishTokens));
           if (hit) {
             place._matchedReview = hit;
             place._matchedKeyword = dishKeyword;
@@ -2100,6 +2374,27 @@
           }
           await new Promise(r => setTimeout(r, 120));
         }
+
+        // 同義詞擴充比對不到任何一間時才啟用 AI 語意比對，一次把所有候選店家的評論
+        // 摘錄送給 Gemini 判斷，涵蓋「氣氛好」「約會」這類同義詞庫沒收錄的抽象描述
+        if (!matched.length && candidates.length && GEMINI_API_KEY) {
+          setStatus(`本機比對沒有找到符合「${dishKeyword}」的餐廳，改用 AI 語意比對中…`);
+          try {
+            const { matchedIndexes } = await semanticMatchDishKeyword(dishKeyword, candidates);
+            (matchedIndexes || []).forEach(idx => {
+              const place = candidates[idx];
+              if (place && !matched.includes(place)) {
+                place._matchedKeyword = dishKeyword;
+                place._aiMatched = true;
+                matched.push(place);
+                dishAiMatchedCount++;
+              }
+            });
+          } catch (err) {
+            console.warn('AI 語意比對失敗：', err);
+          }
+        }
+
         lastResults = matched;
       }
 
@@ -2110,7 +2405,8 @@
       lastDiscoverPickId = null;
       applyFiltersAndRender();
       if (dishKeyword) {
-        setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳。`, 'ok');
+        const aiNote = dishAiMatchedCount ? `（其中 ${dishAiMatchedCount} 間是透過 AI 語意比對找到）` : '';
+        setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${lastResults.length} 間符合「${dishKeyword}」的餐廳${aiNote}。`, 'ok');
       } else {
         setStatus(`完成！沿路共找到 ${lastResults.length} 間不重複的餐廳。`, 'ok');
       }
@@ -2119,6 +2415,7 @@
       setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
     } finally {
       searchBtn.disabled = false;
+      searchBtn.classList.remove('is-loading');
     }
   }
 
@@ -2134,6 +2431,7 @@
     saveSearch();
 
     searchBtn.disabled = true;
+    searchBtn.classList.add('is-loading');
     routeOptionsEl.hidden = true;
     setStatus('載入地圖服務中…');
 
@@ -2163,6 +2461,7 @@
       console.error(err);
       setStatus(err.message || '發生錯誤，請檢查 API key 與網路連線', 'error');
       searchBtn.disabled = false;
+      searchBtn.classList.remove('is-loading');
     }
   }
 
