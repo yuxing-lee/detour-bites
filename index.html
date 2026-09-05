@@ -582,11 +582,35 @@
   .place-card:hover { border-color: var(--amber-dim); transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
   .place-card:active { transform: translateY(-1px); }
 
+  .place-card.highlighted {
+    border-color: var(--amber);
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 2px rgba(242, 163, 64, 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
+  }
+
   .place-card .name {
     font-size: 14px;
     font-weight: 600;
     color: var(--paper);
   }
+
+  .place-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: #221202;
+    font-size: 10.5px;
+    font-weight: 700;
+    vertical-align: middle;
+    transition: transform 0.15s ease;
+  }
+
+  .place-card.highlighted .place-index { transform: scale(1.15); }
 
   .place-card .meta {
     font-size: 12px;
@@ -866,6 +890,7 @@
 
   let map, directionsService, directionsRenderer;
   let placeMarkers = [];
+  let placeCards = [];
   let sdkLoaded = false;
   let sdkLoadPromise = null;
   let allRoutes = [];
@@ -1364,6 +1389,31 @@
   function clearPlaceMarkers() {
     placeMarkers.forEach(m => m.setMap(null));
     placeMarkers = [];
+    placeCards = [];
+  }
+
+  // 清單編號跟地圖標記共用同一套外觀邏輯：預設是帶數字的橘色小圓點，
+  // 滑鼠移到清單卡片或地圖標記其中一邊時，兩邊會一起放大變色，讓使用者看得出兩者對應同一間店
+  function markerIcon(highlighted) {
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: highlighted ? 13 : 9,
+      fillColor: highlighted ? '#ffb85c' : '#f2a340',
+      fillOpacity: 1,
+      strokeColor: '#12172b',
+      strokeWeight: highlighted ? 2.5 : 1.5
+    };
+  }
+
+  function markerLabel(index) {
+    return { text: String(index + 1), color: '#12172b', fontSize: '11px', fontWeight: '700' };
+  }
+
+  function setPlaceHighlighted(index, isOn) {
+    const marker = placeMarkers[index];
+    const card = placeCards[index];
+    if (marker) marker.setIcon(markerIcon(isOn));
+    if (card) card.classList.toggle('highlighted', isOn);
   }
 
   function summarizeRoute(route) {
@@ -1883,14 +1933,9 @@
         position: pos,
         map,
         title: name,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 6,
-          fillColor: '#f2a340',
-          fillOpacity: 1,
-          strokeColor: '#12172b',
-          strokeWeight: 1.5
-        }
+        icon: markerIcon(false),
+        label: markerLabel(i),
+        zIndex: 10
       });
       placeMarkers.push(marker);
 
@@ -1918,7 +1963,7 @@
       const matchedSnippet = p._matchedReview ? reviewSnippet(p._matchedReview, p._matchedKeyword || '') : '';
       const reviewCountLabel = p._reviews ? ` (${p._reviews.length})` : '';
       card.innerHTML = `
-        <div class="name">${escapeHtml(name)}</div>
+        <div class="name"><span class="place-index">${i + 1}</span>${escapeHtml(name)}</div>
         <div class="meta">
           ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
           <span class="rating">${rating}</span>
@@ -1945,10 +1990,25 @@
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
 
+      // 清單卡片 ↔ 地圖標記雙向連動：滑過任一邊，另一邊會一起亮起來
+      card.addEventListener('mouseenter', () => setPlaceHighlighted(i, true));
+      card.addEventListener('mouseleave', () => setPlaceHighlighted(i, false));
+      marker.addListener('mouseover', () => setPlaceHighlighted(i, true));
+      marker.addListener('mouseout', () => setPlaceHighlighted(i, false));
+      marker.addListener('click', () => {
+        map.panTo(pos);
+        map.setZoom(15);
+        new google.maps.InfoWindow({
+          content: `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
+        }).open(map, marker);
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
       wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
 
       wireReviewAndAiActions(card, p, name);
 
+      placeCards.push(card);
       resultListEl.appendChild(card);
     });
   }
