@@ -1772,14 +1772,6 @@
       : base + `&destination=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`;
   }
 
-  // InfoWindow 的預設氣泡背景是白色，但這個頁面全站文字顏色是給深色底用的淺色（--paper），
-  // 沒特別設定的話會被繼承進來變成「白底配淺色字」，幾乎看不到，所以這裡自己包一層深色文字
-  function buildInfoWindowContent(name, address) {
-    return `<div style="color:#1b2140;font-size:13px;line-height:1.5;">`
-      + `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(address)}`
-      + `</div>`;
-  }
-
   function formatRouteDistance(meters) {
     if (typeof meters !== 'number') return '';
     // 沒填目的地時是「離起點多遠」，有填目的地時才是「離路線多遠」
@@ -1787,6 +1779,35 @@
     return meters >= 1000
       ? `${label} ${(meters / 1000).toFixed(1)} 公里`
       : `${label} ${Math.round(meters)} 公尺`;
+  }
+
+  // InfoWindow 的預設氣泡背景是白色，但這個頁面全站文字顏色／清單卡片上的評分橘色、
+  // 營業狀態綠/紅色都是特地調給深色底看的淺色，直接原封不動搬進白底彈出框對比會不夠，
+  // 所以這裡不重用卡片那份已經上色的 HTML，自己從資料重新組一份深色系的版本
+  function buildInfoWindowContent(p, pos) {
+    const name = p.displayName?.text || '(未命名)';
+    const address = p.formattedAddress || '';
+    const ratingText = p.rating
+      ? `★ ${p.rating.toFixed(1)}${p.userRatingCount ? ` (${p.userRatingCount})` : ''}`
+      : '尚無評分';
+    const price = PRICE_LABELS[p.priceLevel] || '';
+    const openNow = p.currentOpeningHours?.openNow;
+    const openHtml = openNow === true
+      ? '<span style="color:#1a7a4c;font-weight:700;">營業中</span>'
+      : openNow === false
+      ? '<span style="color:#b3261e;font-weight:700;">已打烊</span>'
+      : '';
+    const routeDistanceText = formatRouteDistance(p._routeDistance);
+    const navUrl = buildNavUrl(pos);
+    const metaLine = [escapeHtml(ratingText), price, openHtml].filter(Boolean).join(' · ');
+
+    return `<div style="color:#1b2140;font-size:13px;line-height:1.6;max-width:220px;">`
+      + `<div style="font-weight:700;font-size:14px;margin-bottom:4px;">${escapeHtml(name)}</div>`
+      + `<div style="margin-bottom:2px;">${metaLine}</div>`
+      + (routeDistanceText ? `<div style="margin-bottom:2px;">📍 ${escapeHtml(routeDistanceText)}</div>` : '')
+      + `<div style="color:#5a6180;margin-bottom:6px;">${escapeHtml(address)}</div>`
+      + `<a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>`
+      + `</div>`;
   }
 
   const PRICE_RANK = {
@@ -2173,7 +2194,7 @@
         map.panTo(pos);
         map.setZoom(15);
         new google.maps.InfoWindow({
-          content: buildInfoWindowContent(name, address)
+          content: buildInfoWindowContent(p, pos)
         }).open(map, marker);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
@@ -2187,7 +2208,7 @@
         map.panTo(pos);
         map.setZoom(15);
         new google.maps.InfoWindow({
-          content: buildInfoWindowContent(name, address)
+          content: buildInfoWindowContent(p, pos)
         }).open(map, marker);
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
@@ -2337,7 +2358,7 @@
     map.panTo(pos);
     map.setZoom(16);
     new google.maps.InfoWindow({
-      content: buildInfoWindowContent(name, address)
+      content: buildInfoWindowContent(p, pos)
     }).open(map, discoverMarker);
   }
 
