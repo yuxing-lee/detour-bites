@@ -1829,22 +1829,43 @@
     const routeDistanceText = formatRouteDistance(p._routeDistance);
     const navUrl = buildNavUrl(pos);
     const metaLine = [escapeHtml(ratingText), price, openHtml].filter(Boolean).join(' · ');
+    // AI 解析按鈕沒有自己獨立跑一份摘要邏輯，是借用清單卡片既有的 AI 摘要功能：
+    // 按下去只負責切回清單、捲到那張卡片，再幫使用者點一下卡片上的「✨ AI 摘要」
+    const aiBtnHtml = GEMINI_API_KEY
+      ? `<button type="button" class="iw-ai-btn" style="margin-left:10px;border:none;background:none;color:#8a5a1f;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font-size:13px;">✨ AI 解析</button>`
+      : '';
 
     return `<div style="color:#1b2140;font-size:13px;line-height:1.6;max-width:220px;">`
       + `<div style="font-weight:700;font-size:14px;margin-bottom:4px;">${escapeHtml(name)}</div>`
       + `<div style="margin-bottom:2px;">${metaLine}</div>`
       + (routeDistanceText ? `<div style="margin-bottom:2px;">📍 ${escapeHtml(routeDistanceText)}</div>` : '')
       + `<div style="color:#5a6180;margin-bottom:6px;">${escapeHtml(address)}</div>`
-      + `<a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>`
+      + `<div><a href="${navUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>${aiBtnHtml}</div>`
       + `</div>`;
   }
 
-  // 開啟前先收掉前一個開著的 InfoWindow，避免在地圖上切換餐廳時舊的視窗還留著
-  function openPlaceInfoWindow(p, pos, anchor) {
+  // 開啟前先收掉前一個開著的 InfoWindow，避免在地圖上切換餐廳時舊的視窗還留著。
+  // card 是這間店在清單裡對應的卡片元素，有給的話才會顯示/接上「AI 解析」按鈕
+  function openPlaceInfoWindow(p, pos, anchor, card) {
     if (activeInfoWindow) activeInfoWindow.close();
     activeInfoWindow = new google.maps.InfoWindow({
       content: buildInfoWindowContent(p, pos)
     });
+    if (card) {
+      google.maps.event.addListenerOnce(activeInfoWindow, 'domready', () => {
+        const aiBtn = document.querySelector('.iw-ai-btn');
+        if (!aiBtn) return;
+        aiBtn.addEventListener('click', () => {
+          activeInfoWindow.close();
+          setMobileView('list');
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // 摘要還沒展開才代點一下，已經展開過的話只捲過去就好，不要反而把它點關掉
+          const summaryEl = card.querySelector('.ai-summary');
+          const toggleBtn = card.querySelector('.ai-summary-toggle');
+          if (toggleBtn && (!summaryEl || summaryEl.hidden)) toggleBtn.click();
+        });
+      });
+    }
     activeInfoWindow.open(map, anchor);
   }
 
@@ -2231,7 +2252,7 @@
       card.addEventListener('click', () => {
         map.panTo(pos);
         map.setZoom(15);
-        openPlaceInfoWindow(p, pos, marker);
+        openPlaceInfoWindow(p, pos, marker, card);
       });
       card.querySelector('.nav-link').addEventListener('click', (e) => e.stopPropagation());
 
@@ -2243,7 +2264,7 @@
       marker.addListener('click', () => {
         map.panTo(pos);
         map.setZoom(15);
-        openPlaceInfoWindow(p, pos, marker);
+        openPlaceInfoWindow(p, pos, marker, card);
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
 
@@ -2391,7 +2412,7 @@
     });
     map.panTo(pos);
     map.setZoom(16);
-    openPlaceInfoWindow(p, pos, discoverMarker);
+    openPlaceInfoWindow(p, pos, discoverMarker, discoverResultEl);
   }
 
   discoverBtn.addEventListener('click', () => {
