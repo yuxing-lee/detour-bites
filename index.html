@@ -90,6 +90,8 @@
     height: 100vh;
   }
 
+  .mobile-view-tabs { display: none; }
+
   .sidebar {
     background: var(--panel);
     border-right: 1px solid var(--panel-line);
@@ -756,9 +758,48 @@
 
   /* 手機版覆寫放最後，確保能蓋過上面的基本樣式（同權重時 CSS 用後者為準） */
   @media (max-width: 860px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
+    /* 手機版才有「清單／地圖」頁籤，固定在最上面，兩邊切換不用滑過整個表單跟清單 */
+    .mobile-view-tabs {
+      display: flex;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 25;
+      background: var(--panel);
+      border-bottom: 1px solid var(--panel-line);
+    }
+
+    .mobile-view-tab {
+      flex: 1;
+      margin: 0;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-radius: 0;
+      border-bottom: 2px solid transparent;
+      padding: 13px;
+      font-size: 14px;
+      font-weight: 700;
+      box-shadow: none;
+    }
+
+    .mobile-view-tab:hover { background: rgba(242, 163, 64, 0.08); transform: none; }
+    .mobile-view-tab:active { transform: none; }
+
+    .mobile-view-tab.active {
+      color: var(--amber);
+      border-bottom-color: var(--amber);
+    }
+
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; padding-top: 46px; }
 
     .sidebar { padding-bottom: 84px; }
+
+    /* 預設顯示清單（含表單），地圖頁籤按下去才切到地圖 */
+    .app:not(.mobile-view-map) .main { display: none; }
+    .app.mobile-view-map .sidebar { display: none; }
+    .app.mobile-view-map .main { display: block; height: calc(100vh - 46px); }
 
     #searchBtn {
       position: fixed;
@@ -775,7 +816,12 @@
 </head>
 <body>
 
-<div class="app">
+<div class="mobile-view-tabs" id="mobileViewTabs">
+  <button type="button" class="mobile-view-tab active" data-view="list">📋 清單</button>
+  <button type="button" class="mobile-view-tab" data-view="map">🗺️ 地圖</button>
+</div>
+
+<div class="app" id="appEl">
   <div class="sidebar">
     <header>
       <h1>沿路美食搜尋</h1>
@@ -904,6 +950,8 @@
   const resultCountEl = document.getElementById('resultCount');
   const resultListEl = document.getElementById('resultList');
   const mapHintEl = document.getElementById('mapHint');
+  const appEl = document.getElementById('appEl');
+  const mobileViewTabsEl = document.getElementById('mobileViewTabs');
   const searchBtn = document.getElementById('searchBtn');
   const originInput = document.getElementById('origin');
   const destinationInput = document.getElementById('destination');
@@ -1387,6 +1435,32 @@
     });
     mapHintEl.style.display = 'none';
   }
+
+  // 手機版「清單／地圖」頁籤：桌機版兩欄並排看不到這排按鈕，切換邏輯不會影響桌機
+  let mobileView = 'list';
+
+  function setMobileView(view) {
+    mobileView = view;
+    appEl.classList.toggle('mobile-view-map', view === 'map');
+    mobileViewTabsEl.querySelectorAll('.mobile-view-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
+    if (view !== 'map' || !map) return;
+    // 地圖容器切換前是 display:none（寬高是 0），搜尋時算出來的置中/縮放都是在那個狀態下算的，
+    // 所以切回地圖頁籤時不能只靠 resize，要用已知的路線邊界／起點座標重新套用一次，
+    // 不然畫面可能整片灰掉，或停在容器還是 0 大小時算出來的錯誤縮放層級
+    google.maps.event.trigger(map, 'resize');
+    if (allRoutes.length && allRoutes[selectedRouteIndex]) {
+      map.fitBounds(allRoutes[selectedRouteIndex].bounds);
+    } else if (lastOriginLocation) {
+      map.setCenter(lastOriginLocation);
+      map.setZoom(15);
+    }
+  }
+
+  mobileViewTabsEl.querySelectorAll('.mobile-view-tab').forEach(btn => {
+    btn.addEventListener('click', () => setMobileView(btn.dataset.view));
+  });
 
   // 把「起點」文字轉成經緯度：目前位置按鈕填入的是 "lat,lng" 字串可以直接解析，
   // 其他地址文字則交給 Geocoder 轉換
