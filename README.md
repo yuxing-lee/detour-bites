@@ -1,6 +1,6 @@
 # detour-bites
 
-一個純前端的 Google Maps 工具：輸入起點與目的地，沿路線每隔固定距離取樣，搜尋附近餐廳，並在地圖上標示、依評分排序列出結果。
+一個純前端的 Google Maps 工具：輸入起點與目的地，沿路線每隔固定距離取樣，搜尋附近餐廳，並在地圖上標示、依評分排序列出結果。目的地可留空，這時會改成搜尋起點附近的餐廳。
 
 ## 需求
 
@@ -8,6 +8,7 @@
 - 一組已啟用下列服務的 Google Maps API key：
   - Maps JavaScript API
   - Directions API
+  - Geocoding API（目的地留空、只搜尋起點附近時，用來把起點文字轉換成經緯度）
   - Places API (New)
 - （選填）一組已啟用 Generative Language API 的 Gemini API key，用來開啟 AI 評論摘要 / 關鍵字口語解析功能
 
