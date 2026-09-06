@@ -1698,7 +1698,7 @@
 
   // 有填關鍵字時：改用 Text Search (New)，比對更接近 Google Maps 打字搜尋的語意/相關性
   // locationBias 只是「軟性」偏好、不是硬性邊界，所以另外用實際距離過濾回半徑內
-  async function textSearch(location, radius, keyword) {
+  async function textSearch(location, radius, keyword, openNow) {
     const body = {
       textQuery: keyword,
       maxResultCount: 20,
@@ -1711,6 +1711,7 @@
       rankPreference: 'DISTANCE',
       languageCode: 'zh-TW'
     };
+    if (openNow) body.openNow = true;
 
     try {
       const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
@@ -1747,8 +1748,8 @@
   }
 
   // 沒填關鍵字時：單純找附近餐廳，用 searchNearby 的硬性半徑限制
-  async function nearbySearch(location, radius, keyword) {
-    if (keyword) return textSearch(location, radius, keyword);
+  async function nearbySearch(location, radius, keyword, openNow) {
+    if (keyword) return textSearch(location, radius, keyword, openNow);
 
     const body = {
       includedTypes: ['restaurant'],
@@ -1762,6 +1763,8 @@
       rankPreference: 'POPULARITY',
       languageCode: 'zh-TW'
     };
+    // 注意：Nearby Search (New) 的 request schema 沒有 openNow 這個欄位，
+    // Google 官方沒有提供這條路徑的伺服器端過濾，只能靠前端事後過濾
 
     try {
       const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
@@ -2541,6 +2544,7 @@
 
     if (openNow) openNowOnlyEl.checked = true;
     if (preferCheap) sortSelectEl.value = 'price';
+    const wantOpenNow = openNowOnlyEl.checked;
     const hasRoute = allRoutes.length > 0;
     sortDistanceOptionEl.textContent = hasRoute ? '順路優先' : '離起點最近';
 
@@ -2554,7 +2558,7 @@
       const allResultsMap = new Map();
       for (let i = 0; i < samplePoints.length; i++) {
         if (hasRoute) setStatus(`搜尋中… (${i + 1}/${samplePoints.length})`);
-        const places = await nearbySearch(samplePoints[i], radius, keyword);
+        const places = await nearbySearch(samplePoints[i], radius, keyword, wantOpenNow);
         places.forEach(p => {
           if (!p.id || !p.location) return;
           // 同一間店可能被多個取樣點找到，去重即可，實際「順路距離」在下面統一用完整路線重新計算
