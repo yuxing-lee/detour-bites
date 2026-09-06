@@ -1705,7 +1705,6 @@
   async function textSearch(location, radius, keyword) {
     const body = {
       textQuery: keyword,
-      includedType: 'restaurant',
       maxResultCount: 20,
       locationBias: {
         circle: {
