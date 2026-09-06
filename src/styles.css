@@ -734,6 +734,41 @@
     color: var(--muted);
   }
 
+  .photo-gallery {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    animation: fadeIn 0.25s ease;
+  }
+
+  .photo-item {
+    flex: 0 0 auto;
+    width: 120px;
+  }
+
+  .photo-item img {
+    display: block;
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--panel-line);
+  }
+
+  .photo-attribution {
+    margin-top: 2px;
+    font-size: 10.5px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .photo-attribution a {
+    color: var(--muted);
+  }
+
   .ai-summary {
     margin-top: 8px;
     font-size: 12.5px;

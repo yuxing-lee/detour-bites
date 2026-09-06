@@ -15,6 +15,12 @@ export const CLUSTER_MAX_ZOOM = PLACE_INFO_ZOOM - 1;
 export const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
 export const EATEN_STORAGE_KEY = 'detour-bites:eatenPlaces';
 
+// Place Photo Media 端點是額外計費的 SKU（跟抓 photos 欄位本身的 metadata 不同），
+// 每次「查看照片」點擊最多只載入這麼多張，避免使用者連點或店家照片很多時一次觸發大量計費請求
+export const PLACE_PHOTO_MAX_COUNT = 8;
+// 縮圖寬度：夠清楚辨認內容即可，不需要原尺寸，減少流量
+export const PLACE_PHOTO_WIDTH_PX = 480;
+
 export const PLACE_FIELD_MASK = [
   'places.id',
   'places.displayName',

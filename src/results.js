@@ -6,7 +6,7 @@ import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistanc
 import { reviewSnippet } from './reviews.js';
 import { clearPlaceMarkers, markerIcon, markerLabel, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
 import { wireEatenWidget } from './eatenList.js';
-import { wireReviewAndAiActions } from './placeActions.js';
+import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 
 export function applyFiltersAndRender() {
   if (!searchState.lastResults.length) return;
@@ -93,11 +93,13 @@ export function renderResults(places) {
       ${websiteLinkHtml(p, 'class="website-link" title="前往店家官網"')}
       <div class="card-actions">
         <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+        <button type="button" class="review-toggle photo-toggle">📷 查看照片</button>
         ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
       </div>
       <div class="eaten-widget-slot"></div>
       <div class="ai-summary" hidden></div>
       <div class="review-list" hidden></div>
+      <div class="photo-gallery" hidden></div>
     `;
     card.addEventListener('click', () => {
       panForInfoWindow(pos, PLACE_INFO_ZOOM);
@@ -120,6 +122,7 @@ export function renderResults(places) {
     wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
 
     wireReviewAndAiActions(card, p, name);
+    wirePhotoGalleryAction(card, p);
 
     mapState.placeCards.push(card);
     resultListEl.appendChild(card);
