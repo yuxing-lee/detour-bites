@@ -1,5 +1,6 @@
-import { fetchPlaceReviews } from './placesApi.js';
+import { fetchPlaceReviews, fetchPlacePhotos } from './placesApi.js';
 import { renderReviewList } from './reviews.js';
+import { renderPhotoGallery } from './photos.js';
 import { summarizePlaceReviews } from './gemini.js';
 
 // 「查看評論」＋「✨ AI 摘要」按鈕的共用綁定邏輯，讓一般搜尋結果卡片跟「踩新點」隨機推薦卡片
@@ -65,4 +66,37 @@ export function wireReviewAndAiActions(container, p, name) {
       aiSummaryEl.hidden = false;
     });
   }
+}
+
+// 「查看照片」按鈕：跟查看評論同一種 pattern（點擊才打 API、成功結果快取在 p._photos），
+// 因為實際載入圖片是另外計費的 SKU，特別要避免使用者沒點開就先偷跑載入
+export function wirePhotoGalleryAction(container, p) {
+  const photoToggleBtn = container.querySelector('.photo-toggle');
+  const photoGalleryEl = container.querySelector('.photo-gallery');
+  if (!photoToggleBtn || !photoGalleryEl) return;
+
+  photoToggleBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!photoGalleryEl.hidden) {
+      photoGalleryEl.hidden = true;
+      return;
+    }
+    if (!p._photos) {
+      photoToggleBtn.textContent = '載入照片中…';
+      photoToggleBtn.disabled = true;
+      const photos = await fetchPlacePhotos(p.id);
+      photoToggleBtn.disabled = false;
+      // fetchPlacePhotos 失敗時回傳 null；不快取失敗結果，讓使用者下次點擊可以重試
+      if (photos === null) {
+        photoGalleryEl.innerHTML = '<div class="review-empty">照片載入失敗，請稍後再試</div>';
+        photoGalleryEl.hidden = false;
+        photoToggleBtn.textContent = '📷 查看照片';
+        return;
+      }
+      p._photos = photos;
+    }
+    renderPhotoGallery(photoGalleryEl, p._photos);
+    photoGalleryEl.hidden = false;
+    photoToggleBtn.textContent = '📷 查看照片';
+  });
 }

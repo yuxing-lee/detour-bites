@@ -1,4 +1,4 @@
-import { PRICE_LABELS, RESERVATION_PLATFORM_DOMAINS } from './config.js';
+import { PRICE_LABELS, RESERVATION_PLATFORM_DOMAINS, GOOGLE_MAPS_API_KEY } from './config.js';
 
 export function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (ch) => ({
@@ -54,6 +54,13 @@ export function websiteLinkHtml(p, extraAttrs) {
   if (!p.websiteUri) return '';
   const label = isReservationPlatformUrl(p.websiteUri) ? '🍽️ 線上訂位' : '🔗 官方網站';
   return `<a href="${escapeHtml(p.websiteUri)}" target="_blank" rel="noopener noreferrer" ${extraAttrs || ''}>${label}</a>`;
+}
+
+// photo.name 是 Places API 回傳的 resource name（例如 "places/xxx/photos/yyy"），
+// 組出 Place Photo Media (New) 端點的圖片網址；這個端點本身會 302 redirect 到實際圖檔，
+// 直接當 <img src> 用瀏覽器會自動跟著轉址，不需要另外處理
+export function placePhotoMediaUrl(photoName, maxWidthPx) {
+  return `https://places.googleapis.com/v1/${photoName}/media?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&maxWidthPx=${maxWidthPx}`;
 }
 
 // 帶原本的起點/終點，把這間店當中途停靠點，開起來是一條完整的「起點→餐廳→目的地」路線；

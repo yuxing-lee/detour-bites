@@ -116,3 +116,27 @@ export async function fetchPlaceReviews(placeId) {
     return null;
   }
 }
+
+// 用 Place Details (New) 只抓 photos 欄位（metadata：name/寬高/攝影者署名，不含圖片本身）；
+// 跟 fetchPlaceReviews 一樣只在使用者點開「查看照片」時才呼叫，避免每次搜尋都白白多打 API。
+// 真正的圖片是另外用 photo.name 打 Place Photo Media 端點取得（見 utils.js 的 placePhotoMediaUrl），
+// 那個端點才是計費的 SKU，這裡拿到的 metadata 本身不會額外收費
+export async function fetchPlacePhotos(placeId) {
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=zh-TW`, {
+      headers: {
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'photos'
+      }
+    });
+    if (!res.ok) {
+      console.warn('取得照片失敗：', res.status, await res.text());
+      return null;
+    }
+    const data = await res.json();
+    return data.photos || [];
+  } catch (err) {
+    console.warn('取得照片發生錯誤：', err);
+    return null;
+  }
+}

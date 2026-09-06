@@ -3,7 +3,7 @@ import { discoverBtn, openNowOnlyEl, includeEatenCheckbox, discoverResultEl } fr
 import { mapState, searchState } from './state.js';
 import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance } from './utils.js';
 import { isEaten, eatenRating, wireEatenWidget, weightedRandomPick } from './eatenList.js';
-import { wireReviewAndAiActions } from './placeActions.js';
+import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 import { panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
 
 let discoverMarker = null;
@@ -56,16 +56,19 @@ function renderDiscoverResult(p) {
       ${websiteLinkHtml(p, 'class="website-link" title="前往店家官網"')}
       <div class="card-actions">
         <button type="button" class="review-toggle">查看評論${reviewCountLabel}</button>
+        <button type="button" class="review-toggle photo-toggle">📷 查看照片</button>
         ${GEMINI_API_KEY ? '<button type="button" class="review-toggle ai-summary-toggle">✨ AI 摘要</button>' : ''}
       </div>
       <div class="eaten-widget-slot"></div>
       <div class="ai-summary" hidden></div>
       <div class="review-list" hidden></div>
+      <div class="photo-gallery" hidden></div>
     </div>
   `;
 
   wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name);
   wireReviewAndAiActions(discoverResultEl, p, name);
+  wirePhotoGalleryAction(discoverResultEl, p);
 
   clearDiscoverMarker();
   discoverMarker = new google.maps.Marker({
