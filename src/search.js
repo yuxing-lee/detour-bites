@@ -32,12 +32,14 @@ import { loadGoogleMapsSDK, initMapIfNeeded, resolveLocationText } from './googl
 import { applyFiltersAndRender } from './results.js';
 import { resetDiscoverResult } from './discover.js';
 
+let savedOrigin = '';
+
 function loadSavedSearch() {
   try {
     const raw = localStorage.getItem(SEARCH_STORAGE_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
-    if (saved.origin) originInput.value = saved.origin;
+    if (saved.origin) savedOrigin = saved.origin;
     if (saved.destination) destinationInput.value = saved.destination;
     if (saved.targetCount) targetCountInput.value = saved.targetCount;
     if (saved.radius) radiusInput.value = saved.radius;
@@ -64,15 +66,16 @@ function saveSearch() {
 }
 
 loadSavedSearch();
+useCurrentLocation({ silent: true });
 
 if (!GOOGLE_MAPS_API_KEY) {
   setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
   searchBtn.disabled = true;
 }
 
-useCurrentLocationBtn.addEventListener('click', () => {
+function useCurrentLocation({ silent } = {}) {
   if (!navigator.geolocation) {
-    setStatus('這個瀏覽器不支援定位功能', 'error');
+    if (!silent) setStatus('這個瀏覽器不支援定位功能', 'error');
     return;
   }
   useCurrentLocationBtn.disabled = true;
@@ -82,16 +85,22 @@ useCurrentLocationBtn.addEventListener('click', () => {
       originInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
       useCurrentLocationBtn.disabled = false;
       useCurrentLocationBtn.textContent = '目前位置';
-      setStatus('已取得目前位置', 'ok');
+      if (!silent) setStatus('已取得目前位置', 'ok');
     },
     (err) => {
       useCurrentLocationBtn.disabled = false;
       useCurrentLocationBtn.textContent = '目前位置';
-      setStatus('無法取得目前位置：' + err.message, 'error');
+      if (silent) {
+        if (savedOrigin) originInput.value = savedOrigin;
+      } else {
+        setStatus('無法取得目前位置：' + err.message, 'error');
+      }
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
-});
+}
+
+useCurrentLocationBtn.addEventListener('click', () => useCurrentLocation());
 
 function renderRouteOptions() {
   routeOptionsEl.innerHTML = '';
