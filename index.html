@@ -878,10 +878,7 @@
     </div>
 
     <label for="keyword">關鍵字 (選填)</label>
-    <div class="input-with-button">
-      <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵，或口語描述像「便宜、現在有開」" />
-      <button type="button" id="keywordParseBtn" class="secondary-btn">✨ AI 解析</button>
-    </div>
+    <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵，或口語描述像「便宜、現在有開」" />
 
     <label for="dishKeyword">想吃的餐點 (選填，比對評論內容)</label>
     <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
@@ -990,7 +987,6 @@
   const targetCountInput = document.getElementById('targetCount');
   const radiusInput = document.getElementById('radius');
   const keywordInput = document.getElementById('keyword');
-  const keywordParseBtn = document.getElementById('keywordParseBtn');
   const dishKeywordInput = document.getElementById('dishKeyword');
   const useCurrentLocationBtn = document.getElementById('useCurrentLocationBtn');
   const originSuggestionsEl = document.getElementById('originSuggestions');
@@ -2206,38 +2202,6 @@
     });
   }
 
-  if (!GEMINI_API_KEY) {
-    keywordParseBtn.hidden = true;
-  } else {
-    keywordParseBtn.addEventListener('click', async () => {
-      const raw = keywordInput.value.trim();
-      if (!raw) {
-        setStatus('請先在關鍵字欄位輸入內容再解析', 'error');
-        return;
-      }
-      keywordParseBtn.disabled = true;
-      keywordParseBtn.textContent = '解析中…';
-      try {
-        const parsed = await parseKeywordWithGemini(raw);
-        keywordInput.value = parsed.keyword || '';
-        if (parsed.openNow) openNowOnlyEl.checked = true;
-        if (parsed.preferCheap) sortSelectEl.value = 'price';
-        applyFiltersAndRender();
-
-        const notes = [parsed.keyword ? `關鍵字＝「${parsed.keyword}」` : '未指定關鍵字'];
-        if (parsed.openNow) notes.push('只顯示營業中');
-        if (parsed.preferCheap) notes.push('依價格排序');
-        setStatus(`已用 AI 解析：${notes.join('、')}`, 'ok');
-      } catch (err) {
-        console.warn('Gemini 關鍵字解析失敗：', err);
-        setStatus('AI 解析失敗，請直接手動輸入關鍵字', 'error');
-      } finally {
-        keywordParseBtn.disabled = false;
-        keywordParseBtn.textContent = '✨ AI 解析';
-      }
-    });
-  }
-
   function applyFiltersAndRender() {
     if (!lastResults.length) return;
 
@@ -2548,25 +2512,35 @@
     renderDiscoverResult(picked);
   });
 
-  async function searchAlongRoute(routeIndex, keywordOverride) {
-    const radius = parseInt(radiusInput.value, 10) || 1200;
-    // keywordOverride 只有在「關鍵字搜不到結果、AI 重新解析後自動重試」時才會帶入（見下方零結果備援），
-    // 用 typeof 判斷而不是單純看真假值，這樣才能區分「沒有帶」跟「AI 解析出空字串」兩種狀況
-    const isFallbackRetry = typeof keywordOverride === 'string';
-    const rawKeyword = isFallbackRetry ? keywordOverride : keywordInput.value.trim();
-    const localParsed = localParseKeyword(rawKeyword);
-    const keyword = localParsed.keyword;
-    if (!isFallbackRetry) {
-      // 只在使用者這次真正送出的關鍵字上套用偵測到的篩選條件，AI 備援重試時不重複套用，
-      // 避免使用者手動取消勾選後，重試又把它勾回去
-      if (localParsed.openNow) openNowOnlyEl.checked = true;
-      if (localParsed.preferCheap) sortSelectEl.value = 'price';
-    }
+  async function searchAlongRoute(routeIndex) {
+    if (searchBtn.disabled) return;
 
     searchBtn.disabled = true;
     searchBtn.classList.add('is-loading');
 
-    // 沒填目的地時 allRoutes 會是空陣列，改成只用起點附近那一個點來搜尋，不用沿路取樣
+    const radius = parseInt(radiusInput.value, 10) || 1200;
+    const rawKeyword = keywordInput.value.trim();
+    const localParsed = localParseKeyword(rawKeyword);
+    let keyword = localParsed.keyword;
+    let openNow = localParsed.openNow;
+    let preferCheap = localParsed.preferCheap;
+
+    if (GEMINI_API_KEY && rawKeyword) {
+      setStatus('AI 解析關鍵字中…');
+      try {
+        const aiParsed = await parseKeywordWithGemini(rawKeyword);
+        openNow = openNow || !!aiParsed.openNow;
+        preferCheap = preferCheap || !!aiParsed.preferCheap;
+        const aiKeyword = (aiParsed.keyword || '').trim();
+        if (aiKeyword) keyword = aiKeyword;
+        keywordInput.value = keyword;
+      } catch (err) {
+        console.warn('AI 關鍵字解析失敗，改用本機解析結果：', err);
+      }
+    }
+
+    if (openNow) openNowOnlyEl.checked = true;
+    if (preferCheap) sortSelectEl.value = 'price';
     const hasRoute = allRoutes.length > 0;
     sortDistanceOptionEl.textContent = hasRoute ? '順路優先' : '離起點最近';
 
@@ -2609,24 +2583,6 @@
           p._routeDistance = google.maps.geometry.spherical.computeDistanceBetween(lastOriginLocation, placeLatLng);
           p._routeProgress = 0;
         });
-      }
-
-      // 關鍵字搜尋零結果備援：如果打了關鍵字卻完全沒找到餐廳，可能是打得太口語/模糊，
-      // 讓 Google 文字搜尋字面比對失敗。只在「第一次搜尋、還沒重試過」時觸發一次 AI 重新解析，
-      // 避免使用者手動取消掉的篩選條件被反覆蓋回去，也避免無限重試
-      if (!isFallbackRetry && keyword && lastResults.length === 0 && GEMINI_API_KEY) {
-        setStatus(`沒有找到符合「${rawKeyword}」的餐廳，嘗試用 AI 重新解析關鍵字…`);
-        try {
-          const aiParsed = await parseKeywordWithGemini(rawKeyword);
-          const aiKeyword = (aiParsed.keyword || '').trim();
-          if (aiKeyword && aiKeyword !== keyword) {
-            if (aiParsed.openNow) openNowOnlyEl.checked = true;
-            if (aiParsed.preferCheap) sortSelectEl.value = 'price';
-            return await searchAlongRoute(routeIndex, aiKeyword);
-          }
-        } catch (err) {
-          console.warn('AI 關鍵字備援解析失敗：', err);
-        }
       }
 
       const dishKeyword = dishKeywordInput.value.trim();
