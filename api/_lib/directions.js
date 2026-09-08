@@ -12,9 +12,16 @@ function parseLatLngText(text) {
   return { lat, lng };
 }
 
+// Siri 口述、或從聯絡人/地圖 App 貼過來的地址常常帶換行（例如
+// "台灣\n241006 新北市 三重區\n大同南路139巷5號"），Directions/Geocoding
+// API 通常能處理但沒必要冒險，統一收斂成單行空白分隔再送出去
+function normalizeAddressText(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 async function geocode(address) {
   const url = 'https://maps.googleapis.com/maps/api/geocode/json'
-    + `?address=${encodeURIComponent(address)}&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
+    + `?address=${encodeURIComponent(normalizeAddressText(address))}&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
   const res = await fetch(url);
   const data = await res.json();
   if (data.status !== 'OK' || !data.results?.length) {
@@ -34,8 +41,8 @@ export async function resolveLocation(text) {
 
 export async function fetchDirections(origin, destination) {
   const url = 'https://maps.googleapis.com/maps/api/directions/json'
-    + `?origin=${encodeURIComponent(origin)}`
-    + `&destination=${encodeURIComponent(destination)}`
+    + `?origin=${encodeURIComponent(normalizeAddressText(origin))}`
+    + `&destination=${encodeURIComponent(normalizeAddressText(destination))}`
     + `&mode=driving&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
   const res = await fetch(url);
   const data = await res.json();
