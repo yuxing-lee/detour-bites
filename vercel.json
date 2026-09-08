@@ -1,0 +1,5 @@
+{
+  "framework": null,
+  "buildCommand": "echo 'no frontend build on Vercel — this project only deploys api/*; the app itself is deployed separately to GitHub Pages'",
+  "outputDirectory": "vercel-static"
+}

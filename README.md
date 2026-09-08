@@ -71,7 +71,7 @@ npm run preview
 
 ### 部署
 
-1. 到 [vercel.com](https://vercel.com) 用同一個 GitHub 帳號登入，New Project 選這個 repo（`detour-bites`）。Build 設定保持預設即可（Vercel 只會額外把 `api/` 底下偵測成 serverless functions，跟原本 `npm run build` 產生靜態網站互不影響；GitHub Pages 的部署流程完全不受影響，繼續照舊）。
+1. 到 [vercel.com](https://vercel.com) 用同一個 GitHub 帳號登入，New Project 選這個 repo（`detour-bites`）。Build 設定保持預設即可——`vercel.json` 已經設定成**不要**在 Vercel 上跑 Vite 前端 build（只部署 `api/` 底下的 serverless functions；根目錄 `https://<your-app>.vercel.app/` 會看到一個小提示頁）。這是刻意的：`vite.config.js` 的 `base: '/detour-bites/'` 是配合 GitHub Pages「專案頁」網址（`.../detour-bites/`）寫死的，如果讓 Vercel 也跑 `npm run build` 並把 `dist/` 部署到網域根目錄，所有 CSS/JS 的路徑都會指向不存在的 `/detour-bites/...` 而 404，畫面會直接跑版——網站本體只在 GitHub Pages 上，Vercel 這邊純粹是 API。GitHub Pages 的部署流程完全不受影響，繼續照舊。
 2. Vercel Project → Settings → Environment Variables，新增：
    - `GOOGLE_MAPS_API_KEY`：**另外開一組新的** Google Maps API key（**不要**沿用 `VITE_GOOGLE_MAPS_API_KEY`）。這組 key 只會留在 Vercel 伺服器端，不會被打包進任何前端程式碼，所以不能用 HTTP referrer 限制（伺服器對伺服器的請求沒有 referrer），改成在 Google Cloud Console 用 **API restrictions** 只允許 Directions API、Geocoding API、Places API (New) 這三個，並考慮設定每日配額上限。
    - `GEMINI_API_KEY`（選填）：同樣另開一組（不要沿用 `VITE_GEMINI_API_KEY`），用來讓 API 也支援口語關鍵字解析（例如「附近便宜的拉麵，現在有開的」）。留空則只用免 AI 的規則式解析。
