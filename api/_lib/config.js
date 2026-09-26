@@ -13,7 +13,15 @@ export const SHORTCUTS_API_KEY = process.env.SHORTCUTS_API_KEY;
 
 export const GEMINI_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemma-3-27b-it'];
 
-export const SAMPLE_INTERVAL_KM = 8;
+// 沿路取樣 — same as src/config.js. Places 搜尋按次數計費，短路線用至少
+// MIN_SAMPLE_INTERVAL_KM 的間距讓涵蓋率夠密，長路線把間距拉大，確保一次最多打 MAX_SAMPLE_POINTS 次
+export const MIN_SAMPLE_INTERVAL_KM = 3;
+export const MAX_SAMPLE_POINTS = 12;
+
+// 台灣靠右行駛：離路線中心這個距離內的店一律視為同側，超過且在左側才算對向 — same as src/config.js
+export const OPPOSITE_SIDE_TOLERANCE_M = 20;
+// 投影落在起點後方超過這個距離的店視為「已經開過頭」，順路搜尋直接排除
+export const BEHIND_START_TOLERANCE_M = 30;
 
 export const DEFAULT_RADIUS_M = 1200;
 export const MIN_RADIUS_M = 100;

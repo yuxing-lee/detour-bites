@@ -92,7 +92,7 @@ function projectPointOntoSegment(A, B, P, cumulativeToA, segLen) {
   const distAP = haversineDistance(A, P);
 
   if (distAP < 0.5 || segLen < 0.5) {
-    return { distance: distAP, progress: cumulativeToA };
+    return { distance: distAP, progress: cumulativeToA, side: 0, behindA: 0 };
   }
 
   const bearingAP = initialBearingRad(A, P);
@@ -107,31 +107,41 @@ function projectPointOntoSegment(A, B, P, cumulativeToA, segLen) {
   if (Math.abs(bearingDiff) > Math.PI / 2) alongTrack = -alongTrack;
 
   if (alongTrack <= 0) {
-    return { distance: distAP, progress: cumulativeToA };
+    return { distance: distAP, progress: cumulativeToA, side: crossTrack, behindA: -alongTrack };
   }
   if (alongTrack >= segLen) {
     const distBP = haversineDistance(B, P);
-    return { distance: distBP, progress: cumulativeToA + segLen };
+    return { distance: distBP, progress: cumulativeToA + segLen, side: crossTrack, behindA: 0 };
   }
-  return { distance: Math.abs(crossTrack), progress: cumulativeToA + alongTrack };
+  return { distance: Math.abs(crossTrack), progress: cumulativeToA + alongTrack, side: crossTrack, behindA: 0 };
 }
 
-// 找出點 P 到整條路線最近的位置（垂直距離）與沿路線累積進度 — same as src/routeMath.js
+// 找出點 P 到整條路線最近的位置（垂直距離）、沿路線累積進度、在行進方向的哪一側
+// （side：正 = 右、負 = 左，公尺），以及是否在起點後方（behindStart，公尺）— same as src/routeMath.js
 export function projectPointOntoRoutePath(point, path) {
   let cumulative = 0;
   let best = null;
+  let bestIsFirstSegment = false;
   for (let i = 1; i < path.length; i++) {
     const A = path[i - 1];
     const B = path[i];
     const segLen = haversineDistance(A, B);
     if (segLen > 0) {
       const result = projectPointOntoSegment(A, B, point, cumulative, segLen);
-      if (!best || result.distance < best.distance) best = result;
+      if (!best || result.distance < best.distance) {
+        best = result;
+        bestIsFirstSegment = i === 1;
+      }
     }
     cumulative += segLen;
   }
   if (!best) {
-    return { distance: haversineDistance(path[0], point), progress: 0 };
+    return { distance: haversineDistance(path[0], point), progress: 0, side: 0, behindStart: 0 };
   }
-  return best;
+  return {
+    distance: best.distance,
+    progress: best.progress,
+    side: best.side,
+    behindStart: bestIsFirstSegment ? best.behindA : 0
+  };
 }

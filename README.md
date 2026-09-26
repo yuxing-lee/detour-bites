@@ -99,8 +99,9 @@ Request body（JSON）：
 | `keyword` | ✗ | 料理/店名，可以是口語（「便宜的拉麵，現在有開」），會先跑規則式解析，有設 `GEMINI_API_KEY` 再疊加 AI 解析 |
 | `radius` | ✗ | 搜尋半徑（公尺），預設 1200，範圍 100–5000 |
 | `openNow` | ✗ | `true` 則只看營業中（跟從 `keyword` 解析出的口語 openNow 是「或」的關係） |
-| `sort` | ✗ | `"route"`（順路優先，有 `destination` 時預設）／`"rating"`（評分高到低，沒有 `destination` 時預設）／`"price"`（便宜到貴） |
+| `sort` | ✗ | `"route"`（順路優先：同側在前、對向在後，有 `destination` 時預設）／`"rating"`（評分高到低，沒有 `destination` 時預設）／`"price"`（便宜到貴） |
 | `limit` | ✗ | 最多回傳幾間，預設 15，上限 30 |
+| `sameSideOnly` | ✗ | `true` 則只回傳行進方向右側（同側）的店；只在有 `destination` 時有作用 |
 
 Response 200（JSON）：
 
@@ -119,6 +120,7 @@ Response 200（JSON）：
       "openNow": true,
       "location": { "lat": 25.03, "lng": 121.56 },
       "routeDistanceM": 340,
+      "oppositeSide": false,
       "navUrl": "https://www.google.com/maps/dir/?api=1&...",
       "websiteUri": "https://..."
     }
@@ -126,7 +128,7 @@ Response 200（JSON）：
 }
 ```
 
-沒有 `destination` 時 `route` 是 `null`，`routeDistanceM` 改成離 `origin` 多遠。錯誤回應：`400`（缺 `origin`）、`401`（`X-API-Key` 錯誤或缺漏）、`405`（不是 `POST`）、`502`（Google API 端錯誤，例如地址解析失敗、路線規劃失敗）。
+有 `destination` 時跟網頁版一樣：沿路取樣間距至少 3km、一次最多 12 個取樣點；起點後方（已經開過頭）的店會直接排除；`oppositeSide: true` 代表店在行進方向左側（對向），路寬的話可能要迴轉。沒有 `destination` 時 `route` 是 `null`，`routeDistanceM` 改成離 `origin` 多遠，`oppositeSide` 一律是 `false`。錯誤回應：`400`（缺 `origin`）、`401`（`X-API-Key` 錯誤或缺漏）、`405`（不是 `POST`）、`502`（Google API 端錯誤，例如地址解析失敗、路線規劃失敗）。
 
 ### `GET /api/health`
 
