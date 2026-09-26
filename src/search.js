@@ -4,6 +4,8 @@ import {
   MIN_SAMPLE_INTERVAL_KM,
   MAX_SAMPLE_POINTS,
   MAX_REVIEW_CANDIDATES,
+  OPPOSITE_SIDE_TOLERANCE_M,
+  BEHIND_START_TOLERANCE_M,
   PLACES_CONCURRENCY,
   SEARCH_STORAGE_KEY
 } from './config.js';
@@ -23,6 +25,7 @@ import {
   sortDistanceOptionEl,
   openNowOnlyEl,
   resultsControlsEl,
+  sameSideOnlyLabelEl,
   discoverBoxEl
 } from './dom.js';
 import { mapState, searchState } from './state.js';
@@ -214,15 +217,19 @@ async function searchAlongRoute(routeIndex) {
     searchState.lastResults = Array.from(allResultsMap.values());
 
     if (hasRoute) {
-      // 用完整、有方向性的逐步路徑（而不是粗略的取樣點）算出每間店「真正垂直於路線的距離」，
-      // 以及沿路線方向的累積進度，避免把對向車道、反方向路段或平行道路上的店誤判成順路
+      // 用完整、有方向性的逐步路徑（而不是粗略的取樣點）算出每間店「真正垂直於路線的距離」、
+      // 沿路線方向的累積進度，以及在行進方向的哪一側
       const detailedPath = buildDetailedRoutePath(searchState.allRoutes[routeIndex]);
       searchState.lastResults.forEach(p => {
         const placeLatLng = new google.maps.LatLng(p.location.latitude, p.location.longitude);
         const proj = projectPointOntoRoutePath(placeLatLng, detailedPath);
         p._routeDistance = proj.distance;
         p._routeProgress = proj.progress;
+        p._oppositeSide = proj.side < -OPPOSITE_SIDE_TOLERANCE_M;
+        p._behindStart = proj.behindStart > BEHIND_START_TOLERANCE_M;
       });
+      // 起點取樣圈也會搜到背後（已經開過頭）的店，順路搜尋不需要；在查評論前先排除，也省 API
+      searchState.lastResults = searchState.lastResults.filter(p => !p._behindStart);
     } else {
       // 沒有路線可比對，改成算「離起點多遠」，_routeProgress 全部一樣，排序就單純依距離
       searchState.lastResults.forEach(p => {
@@ -286,6 +293,7 @@ async function searchAlongRoute(routeIndex) {
     }
 
     resultsControlsEl.hidden = searchState.lastResults.length === 0;
+    sameSideOnlyLabelEl.hidden = !hasRoute;
     discoverBoxEl.hidden = searchState.lastResults.length === 0;
     resetDiscoverResult();
     applyFiltersAndRender();

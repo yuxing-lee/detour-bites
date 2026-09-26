@@ -1,7 +1,8 @@
 import { EATEN_GOOD_RATING_THRESHOLD, OLD_FAVORITE_RATIO, GEMINI_API_KEY } from './config.js';
-import { discoverBtn, openNowOnlyEl, includeEatenCheckbox, discoverResultEl } from './dom.js';
+import { discoverBtn, includeEatenCheckbox, discoverResultEl } from './dom.js';
 import { mapState, searchState } from './state.js';
-import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance } from './utils.js';
+import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml } from './utils.js';
+import { applyCheckboxFilters } from './results.js';
 import { isEaten, eatenRating, wireEatenWidget, weightedRandomPick } from './eatenList.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 import { panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
@@ -47,6 +48,7 @@ function renderDiscoverResult(p) {
       <div class="name">🎯 ${escapeHtml(name)}</div>
       <div class="meta">
         ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
+        ${oppositeSideBadgeHtml(p)}
         <span class="rating">${rating}</span>
         <span>${escapeHtml(address)}</span>
         ${price ? `<span>${price}</span>` : ''}
@@ -97,10 +99,7 @@ discoverBtn.addEventListener('click', () => {
   discoverBtn.classList.add('rolling');
   setTimeout(() => discoverBtn.classList.remove('rolling'), 500);
 
-  let candidates = searchState.lastResults.slice();
-  if (openNowOnlyEl.checked) {
-    candidates = candidates.filter(p => p.currentOpeningHours?.openNow === true);
-  }
+  let candidates = applyCheckboxFilters(searchState.lastResults);
 
   // 避免連續兩次抽到同一間；但如果排除後就沒候選了（篩到只剩它自己），就不排除
   if (lastDiscoverPickId && candidates.some(p => p.id !== lastDiscoverPickId)) {

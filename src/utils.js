@@ -91,6 +91,12 @@ export function buildNavUrl(pos, origin, destination) {
     : base + `&destination=${encodeURIComponent(`${pos.lat},${pos.lng}`)}`;
 }
 
+export function oppositeSideBadgeHtml(p) {
+  return p._oppositeSide
+    ? '<span class="opposite-side-badge" title="在行進方向的左側（對向），路寬的話可能要迴轉">↩ 對向</span>'
+    : '';
+}
+
 export function formatRouteDistance(meters, destination) {
   if (typeof meters !== 'number') return '';
   // 沒填目的地時是「離起點多遠」，有填目的地時才是「離路線多遠」
