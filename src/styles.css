@@ -655,6 +655,7 @@
   .place-card .rating { color: var(--amber); }
 
   .open-badge { font-weight: 600; }
+  .opposite-side-badge { color: #e6b36f; font-weight: 600; }
   .open-badge.open { color: var(--good); }
   .open-badge.closed { color: #e6816f; }
 

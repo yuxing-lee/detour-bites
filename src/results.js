@@ -1,31 +1,42 @@
 import { MarkerClusterer, SuperClusterAlgorithm } from '@googlemaps/markerclusterer';
 import { PRICE_RANK, GEMINI_API_KEY, PLACE_INFO_ZOOM, CLUSTER_MAX_ZOOM } from './config.js';
-import { targetCountInput, openNowOnlyEl, sortSelectEl, resultCountEl, resultListEl } from './dom.js';
+import { targetCountInput, openNowOnlyEl, sameSideOnlyEl, sortSelectEl, resultCountEl, resultListEl } from './dom.js';
 import { mapState, searchState } from './state.js';
-import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance } from './utils.js';
+import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml } from './utils.js';
 import { reviewSnippet } from './reviews.js';
 import { clearPlaceMarkers, markerIcon, markerLabel, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
 import { wireEatenWidget } from './eatenList.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 
+// 結果清單跟「踩新點」共用的勾選篩選條件
+export function applyCheckboxFilters(places) {
+  let list = places.slice();
+  if (openNowOnlyEl.checked) {
+    list = list.filter(p => p.currentOpeningHours?.openNow === true);
+  }
+  // 只在順路搜尋時有意義；附近搜尋的店沒有 _oppositeSide，不會被過濾
+  if (sameSideOnlyEl.checked && searchState.lastDestination) {
+    list = list.filter(p => !p._oppositeSide);
+  }
+  return list;
+}
+
 export function applyFiltersAndRender() {
   if (!searchState.lastResults.length) return;
 
   const targetCount = parseInt(targetCountInput.value, 10) || 10;
-  let list = searchState.lastResults.slice();
-
-  if (openNowOnlyEl.checked) {
-    list = list.filter(p => p.currentOpeningHours?.openNow === true);
-  }
+  let list = applyCheckboxFilters(searchState.lastResults);
 
   if (sortSelectEl.value === 'price') {
     list.sort((a, b) => (PRICE_RANK[a.priceLevel] || 99) - (PRICE_RANK[b.priceLevel] || 99));
   } else if (sortSelectEl.value === 'rating') {
     list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   } else {
-    // 順路優先：先比真正垂直於路線的距離（越小代表越不用繞路），
+    // 順路優先：同側（右側）的店排在對向的店前面，因為對向的店在寬的路上要迴轉；
+    // 同一側再比真正垂直於路線的距離（越小代表越不用繞路），
     // 距離相近時再依沿路線方向的累積進度排序，讓清單順序盡量跟著行進方向走，不會忽前忽後
     list.sort((a, b) => {
+      if (!!a._oppositeSide !== !!b._oppositeSide) return a._oppositeSide ? 1 : -1;
       const da = a._routeDistance ?? Infinity;
       const db = b._routeDistance ?? Infinity;
       if (Math.abs(da - db) > 30) return da - db;
@@ -38,6 +49,7 @@ export function applyFiltersAndRender() {
 
 sortSelectEl.addEventListener('change', applyFiltersAndRender);
 openNowOnlyEl.addEventListener('change', applyFiltersAndRender);
+sameSideOnlyEl.addEventListener('change', applyFiltersAndRender);
 targetCountInput.addEventListener('change', applyFiltersAndRender);
 
 export function renderResults(places) {
@@ -83,6 +95,7 @@ export function renderResults(places) {
       <div class="name"><span class="place-index">${i + 1}</span>${escapeHtml(name)}</div>
       <div class="meta">
         ${routeDistanceText ? `<span class="route-distance">${routeDistanceText}</span>` : ''}
+        ${oppositeSideBadgeHtml(p)}
         <span class="rating">${rating}</span>
         <span>${escapeHtml(address)}</span>
         ${price ? `<span>${price}</span>` : ''}

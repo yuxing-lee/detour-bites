@@ -41,15 +41,16 @@ function normalizeAngleRad(a) {
 
 const EARTH_RADIUS_M = 6371000;
 
-// 把點 P 投影到路線上的一個線段 A→B，回傳「垂直於路線的距離」與
-// 「沿路線方向、從路線起點累積到投影點的距離」。
+// 把點 P 投影到路線上的一個線段 A→B，回傳「垂直於路線的距離」、
+// 「沿路線方向、從路線起點累積到投影點的距離」、在行進方向的哪一側
+// （side：正值 = 右側、負值 = 左側，單位公尺），以及投影點落在線段起點之前多遠（behindA）。
 // 用球面三角的 cross-track / along-track 公式，短線段（一個 step 內的路徑點）誤差可忽略。
 function projectPointOntoSegment(A, B, P, cumulativeToA, segLen) {
   const headingAB = google.maps.geometry.spherical.computeHeading(A, B);
   const distAP = google.maps.geometry.spherical.computeDistanceBetween(A, P);
 
   if (distAP < 0.5 || segLen < 0.5) {
-    return { distance: distAP, progress: cumulativeToA };
+    return { distance: distAP, progress: cumulativeToA, side: 0, behindA: 0 };
   }
 
   const bearingAB = (headingAB * Math.PI) / 180;
@@ -65,36 +66,47 @@ function projectPointOntoSegment(A, B, P, cumulativeToA, segLen) {
   if (Math.abs(bearingDiff) > Math.PI / 2) alongTrack = -alongTrack;
 
   if (alongTrack <= 0) {
-    return { distance: distAP, progress: cumulativeToA };
+    return { distance: distAP, progress: cumulativeToA, side: crossTrack, behindA: -alongTrack };
   }
   if (alongTrack >= segLen) {
     const distBP = google.maps.geometry.spherical.computeDistanceBetween(B, P);
-    return { distance: distBP, progress: cumulativeToA + segLen };
+    return { distance: distBP, progress: cumulativeToA + segLen, side: crossTrack, behindA: 0 };
   }
-  return { distance: Math.abs(crossTrack), progress: cumulativeToA + alongTrack };
+  return { distance: Math.abs(crossTrack), progress: cumulativeToA + alongTrack, side: crossTrack, behindA: 0 };
 }
 
-// 找出點 P 到整條路線最近的位置：真正垂直於路線的距離（順路程度），
-// 以及沿路線方向從起點累積到那個位置的距離（用來確保排序不會忽前忽後）。
-// 因為是用有方向性的逐步路徑計算，天生就不會把對向車道/反方向路段誤判成「順路」。
+// 找出點 P 到整條路線最近的位置：真正垂直於路線的距離（順路程度）、
+// 沿路線方向從起點累積到那個位置的距離（用來確保排序不會忽前忽後）、
+// 店在行進方向的哪一側（side，正 = 右、負 = 左），
+// 以及店是否在起點後方（behindStart：最近的位置是第一段路線、而且投影落在起點之前，單位公尺）。
+// 用逐步路徑計算可以避免把平行道路上的店算成貼著路線，但路的左右兩側要靠 side 另外判斷。
 export function projectPointOntoRoutePath(point, path) {
   let cumulative = 0;
   let best = null;
+  let bestIsFirstSegment = false;
   for (let i = 1; i < path.length; i++) {
     const A = path[i - 1];
     const B = path[i];
     const segLen = google.maps.geometry.spherical.computeDistanceBetween(A, B);
     if (segLen > 0) {
       const result = projectPointOntoSegment(A, B, point, cumulative, segLen);
-      if (!best || result.distance < best.distance) best = result;
+      if (!best || result.distance < best.distance) {
+        best = result;
+        bestIsFirstSegment = i === 1;
+      }
     }
     cumulative += segLen;
   }
   if (!best) {
     const only = path[0];
-    return { distance: google.maps.geometry.spherical.computeDistanceBetween(only, point), progress: 0 };
+    return { distance: google.maps.geometry.spherical.computeDistanceBetween(only, point), progress: 0, side: 0, behindStart: 0 };
   }
-  return best;
+  return {
+    distance: best.distance,
+    progress: best.progress,
+    side: best.side,
+    behindStart: bestIsFirstSegment ? best.behindA : 0
+  };
 }
 
 export function summarizeRoute(route) {
