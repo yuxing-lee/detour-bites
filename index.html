@@ -20,7 +20,7 @@
   <div class="sidebar">
     <header>
       <h1>沿路美食搜尋</h1>
-      <div class="tagline">輸入起點與目的地,自動沿路線取樣搜尋附近餐廳；不填目的地則搜尋起點附近</div>
+      <div class="tagline">找附近的餐廳，或填目的地找順路的</div>
     </header>
 
     <label for="origin">起點</label>
@@ -32,31 +32,37 @@
       <button type="button" id="useCurrentLocationBtn" class="secondary-btn">目前位置</button>
     </div>
 
-    <label for="destination">目的地（選填，留空則搜尋起點附近）</label>
+    <label for="destination">目的地（找順路餐廳才需要）</label>
     <div class="autocomplete-wrap">
-      <input id="destination" type="text" placeholder="例如：台中高鐵站，留空則搜尋起點附近" autocomplete="off" />
+      <input id="destination" type="text" placeholder="例如：台中高鐵站" autocomplete="off" />
       <div id="destinationSuggestions" class="autocomplete-list" hidden></div>
     </div>
 
-    <div class="row2">
-      <div>
-        <label for="targetCount">找幾間</label>
-        <input id="targetCount" type="number" value="10" min="1" max="50" step="1" />
+    <label for="keyword">想吃什麼（選填）</label>
+    <input id="keyword" type="text" placeholder="例如：拉麵，或口語像「便宜、現在有開」" />
+
+    <details class="advanced-options" id="advancedOptions">
+      <summary>更多條件</summary>
+      <div class="row2">
+        <div>
+          <label for="targetCount">找幾間</label>
+          <input id="targetCount" type="number" value="10" min="1" max="50" step="1" />
+        </div>
+        <div>
+          <label for="radius">搜尋半徑 (m)</label>
+          <input id="radius" type="number" value="1200" min="100" step="100" />
+        </div>
       </div>
-      <div>
-        <label for="radius">搜尋半徑 (m)</label>
-        <input id="radius" type="number" value="100" min="100" step="100" />
-      </div>
+
+      <label for="dishKeyword">評論要提到的餐點</label>
+      <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
+      <div class="key-note">只留下 Google 評論裡有人提到的店家；會多查每間店的評論，比較慢。</div>
+    </details>
+
+    <div class="search-actions">
+      <button type="button" id="nearbyBtn">📍 附近吃什麼</button>
+      <button type="button" id="searchBtn">🚗 順路吃什麼</button>
     </div>
-
-    <label for="keyword">關鍵字 (選填)</label>
-    <input id="keyword" type="text" placeholder="例如：牛肉麵、拉麵，或口語描述像「便宜、現在有開」" />
-
-    <label for="dishKeyword">想吃的餐點 (選填，比對評論內容)</label>
-    <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
-    <div class="key-note">填寫後會針對沿路候選餐廳逐一查詢 Google 評論比對關鍵字，只留下評論裡有人提到的店家；店家數較多時會比較慢，也會增加 Places API 用量。</div>
-
-    <button id="searchBtn">搜尋美食</button>
     <div id="status" class="status"></div>
     <div id="routeOptions" class="route-options" hidden></div>
 
@@ -68,7 +74,7 @@
       <h2>搜尋結果</h2>
       <div id="discoverBox" class="discover-box" hidden>
         <div class="discover-title">🎲 踩新點</div>
-        <div class="discover-sub">從目前搜尋結果中（依你的關鍵字/半徑等條件過濾後）隨機推薦一間。勾選下方選項時，固定有 25% 機率抽到吃過的高評價餐廳（星星越高越容易雀屏中選）、75% 機率抽到還沒吃過的新店；不勾選則固定只抽新店。3★ 以下的餐廳一律不會出現，不受路線上舊餐廳數量多寡影響比例。</div>
+        <div class="discover-sub">不知道吃什麼？從這次結果隨機挑一間還沒吃過的。</div>
         <label class="checkbox-label">
           <input type="checkbox" id="includeEatenCheckbox" />
           包含吃過的高評價餐廳（4★以上）
