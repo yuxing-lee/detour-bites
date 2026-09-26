@@ -1,12 +1,16 @@
 import {
   GOOGLE_MAPS_API_KEY,
   GEMINI_API_KEY,
-  SAMPLE_INTERVAL_KM,
+  MIN_SAMPLE_INTERVAL_KM,
+  MAX_SAMPLE_POINTS,
   MAX_REVIEW_CANDIDATES,
+  PLACES_CONCURRENCY,
   SEARCH_STORAGE_KEY
 } from './config.js';
 import {
   searchBtn,
+  nearbyBtn,
+  advancedOptionsEl,
   originInput,
   destinationInput,
   targetCountInput,
@@ -23,7 +27,7 @@ import {
 } from './dom.js';
 import { mapState, searchState } from './state.js';
 import { setStatus } from './ui.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, mapWithConcurrency } from './utils.js';
 import { samplePointsAlongPath, buildDetailedRoutePath, projectPointOntoRoutePath, summarizeRoute } from './routeMath.js';
 import { nearbySearch, fetchPlaceReviews } from './placesApi.js';
 import { expandDishTokens, reviewMentionsAny } from './reviews.js';
@@ -33,6 +37,14 @@ import { applyFiltersAndRender } from './results.js';
 import { resetDiscoverResult } from './discover.js';
 
 let savedOrigin = '';
+// 這次搜尋是哪顆按鈕觸發的，轉圈動畫只顯示在那顆上
+let activeSearchBtn = searchBtn;
+
+function setSearching(on) {
+  searchBtn.disabled = on;
+  nearbyBtn.disabled = on;
+  activeSearchBtn.classList.toggle('is-loading', on);
+}
 
 function loadSavedSearch() {
   try {
@@ -40,11 +52,17 @@ function loadSavedSearch() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (saved.origin) savedOrigin = saved.origin;
-    if (saved.destination) destinationInput.value = saved.destination;
+    // 目的地刻意不還原：起點每次都會換成目前位置，還原上次的目的地會變成
+    // 「從這裡到昨天要去的地方」的路線搜尋，而不是使用者預期的附近搜尋
     if (saved.targetCount) targetCountInput.value = saved.targetCount;
-    if (saved.radius) radiusInput.value = saved.radius;
+    // 100 是舊版表單的預設半徑（太小，沿路幾乎搜不到店），視同沒設定、改用新的預設值
+    if (saved.radius && saved.radius !== '100') radiusInput.value = saved.radius;
     if (saved.keyword) keywordInput.value = saved.keyword;
-    if (saved.dishKeyword) dishKeywordInput.value = saved.dishKeyword;
+    if (saved.dishKeyword) {
+      dishKeywordInput.value = saved.dishKeyword;
+      // 這個條件會過濾掉大部分結果，收在「更多條件」裡時要展開，免得使用者不知道它還有效
+      advancedOptionsEl.open = true;
+    }
   } catch (err) {
     console.warn('讀取上次搜尋條件失敗：', err);
   }
@@ -54,7 +72,6 @@ function saveSearch() {
   try {
     localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify({
       origin: originInput.value.trim(),
-      destination: destinationInput.value.trim(),
       targetCount: targetCountInput.value,
       radius: radiusInput.value,
       keyword: keywordInput.value.trim(),
@@ -71,6 +88,7 @@ useCurrentLocation({ silent: true });
 if (!GOOGLE_MAPS_API_KEY) {
   setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
   searchBtn.disabled = true;
+  nearbyBtn.disabled = true;
 }
 
 function useCurrentLocation({ silent } = {}) {
@@ -136,8 +154,7 @@ async function searchAlongRoute(routeIndex) {
   if (searchAlongRouteInProgress) return;
   searchAlongRouteInProgress = true;
 
-  searchBtn.disabled = true;
-  searchBtn.classList.add('is-loading');
+  setSearching(true);
 
   const radius = parseInt(radiusInput.value, 10) || 1200;
   const rawKeyword = keywordInput.value.trim();
@@ -167,24 +184,32 @@ async function searchAlongRoute(routeIndex) {
   sortDistanceOptionEl.textContent = hasRoute ? '順路優先' : '離起點最近';
 
   try {
-    const samplePoints = hasRoute
-      ? samplePointsAlongPath(searchState.allRoutes[routeIndex].overview_path, SAMPLE_INTERVAL_KM)
-      : [searchState.lastOriginLocation];
+    let samplePoints = [searchState.lastOriginLocation];
+    if (hasRoute) {
+      const path = searchState.allRoutes[routeIndex].overview_path;
+      const routeKm = google.maps.geometry.spherical.computeLength(path) / 1000;
+      // 間距至少 routeKm / (MAX_SAMPLE_POINTS - 2)：中間最多 MAX_SAMPLE_POINTS - 2 個點，
+      // 加上起點、終點，總數不會超過 MAX_SAMPLE_POINTS
+      const intervalKm = Math.max(MIN_SAMPLE_INTERVAL_KM, routeKm / (MAX_SAMPLE_POINTS - 2));
+      samplePoints = samplePointsAlongPath(path, intervalKm);
+    }
 
     setStatus(hasRoute ? `路線取得完成，沿路 ${samplePoints.length} 個點搜尋中…` : '搜尋起點附近中…');
 
+    let doneCount = 0;
+    const placeLists = await mapWithConcurrency(samplePoints, PLACES_CONCURRENCY, async (point) => {
+      const places = await nearbySearch(point, radius, keyword, wantOpenNow);
+      doneCount++;
+      if (hasRoute) setStatus(`搜尋中… (${doneCount}/${samplePoints.length})`);
+      return places;
+    });
+
     const allResultsMap = new Map();
-    for (let i = 0; i < samplePoints.length; i++) {
-      if (hasRoute) setStatus(`搜尋中… (${i + 1}/${samplePoints.length})`);
-      const places = await nearbySearch(samplePoints[i], radius, keyword, wantOpenNow);
-      places.forEach(p => {
-        if (!p.id || !p.location) return;
-        // 同一間店可能被多個取樣點找到，去重即可，實際「順路距離」在下面統一用完整路線重新計算
-        if (!allResultsMap.has(p.id)) allResultsMap.set(p.id, p);
-      });
-      // 避免過快連續打 API
-      await new Promise(r => setTimeout(r, 150));
-    }
+    placeLists.flat().forEach(p => {
+      if (!p.id || !p.location) return;
+      // 同一間店可能被多個取樣點找到，去重即可，實際「順路距離」在下面統一用完整路線重新計算
+      if (!allResultsMap.has(p.id)) allResultsMap.set(p.id, p);
+    });
 
     searchState.lastResults = Array.from(allResultsMap.values());
 
@@ -220,20 +245,22 @@ async function searchAlongRoute(routeIndex) {
       cappedCandidateCount = candidates.length;
 
       const dishTokens = expandDishTokens(dishKeyword);
-      const matched = [];
-      for (let i = 0; i < candidates.length; i++) {
-        setStatus(`比對評論中…(${i + 1}/${candidates.length})`);
-        const place = candidates[i];
+      let reviewDoneCount = 0;
+      setStatus(`比對評論中…(0/${candidates.length})`);
+      const hits = await mapWithConcurrency(candidates, PLACES_CONCURRENCY, async (place) => {
         const reviews = await fetchPlaceReviews(place.id);
+        reviewDoneCount++;
+        setStatus(`比對評論中…(${reviewDoneCount}/${candidates.length})`);
         if (reviews !== null) place._reviews = reviews;
-        const hit = (reviews || []).find(r => reviewMentionsAny(r, dishTokens));
-        if (hit) {
-          place._matchedReview = hit;
-          place._matchedKeyword = dishKeyword;
-          matched.push(place);
-        }
-        await new Promise(r => setTimeout(r, 120));
-      }
+        return (reviews || []).find(r => reviewMentionsAny(r, dishTokens));
+      });
+      const matched = [];
+      candidates.forEach((place, i) => {
+        if (!hits[i]) return;
+        place._matchedReview = hits[i];
+        place._matchedKeyword = dishKeyword;
+        matched.push(place);
+      });
 
       // 同義詞擴充比對不到任何一間時才啟用 AI 語意比對，一次把所有候選店家的評論
       // 摘錄送給 Gemini 判斷，涵蓋「氣氛好」「約會」這類同義詞庫沒收錄的抽象描述
@@ -275,24 +302,28 @@ async function searchAlongRoute(routeIndex) {
     setStatus(err.message || '發生錯誤，請檢查網路連線', 'error');
   } finally {
     searchAlongRouteInProgress = false;
-    searchBtn.disabled = false;
-    searchBtn.classList.remove('is-loading');
+    setSearching(false);
   }
 }
 
-async function runSearch() {
+// mode 'nearby'：不管目的地欄位填了什麼，只找起點附近；mode 'route'：一定要有目的地
+async function runSearch(mode) {
   const origin = originInput.value.trim();
-  const destination = destinationInput.value.trim();
+  const destination = mode === 'route' ? destinationInput.value.trim() : '';
 
   if (!GOOGLE_MAPS_API_KEY) return setStatus('尚未設定 Google Maps API Key，請在 .env 中設定 VITE_GOOGLE_MAPS_API_KEY 後重新啟動 npm run dev', 'error');
   if (!origin) return setStatus('請輸入起點', 'error');
+  if (mode === 'route' && !destination) {
+    destinationInput.focus();
+    return setStatus('找順路餐廳要先填目的地；只想找附近的話按「附近吃什麼」', 'error');
+  }
 
   searchState.lastOrigin = origin;
   searchState.lastDestination = destination;
   saveSearch();
 
-  searchBtn.disabled = true;
-  searchBtn.classList.add('is-loading');
+  activeSearchBtn = mode === 'route' ? searchBtn : nearbyBtn;
+  setSearching(true);
   routeOptionsEl.hidden = true;
   setStatus('載入地圖服務中…');
 
@@ -334,9 +365,9 @@ async function runSearch() {
   } catch (err) {
     console.error(err);
     setStatus(err.message || '發生錯誤，請檢查 API key 與網路連線', 'error');
-    searchBtn.disabled = false;
-    searchBtn.classList.remove('is-loading');
+    setSearching(false);
   }
 }
 
-searchBtn.addEventListener('click', runSearch);
+searchBtn.addEventListener('click', () => runSearch('route'));
+nearbyBtn.addEventListener('click', () => runSearch('nearby'));

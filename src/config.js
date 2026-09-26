@@ -4,8 +4,15 @@ export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 // 前面的 model 額度用完（或暫時出錯）就自動換下一個，盡量把整體可用額度疊加起來。
 // gemma 系列跟 Gemini 系列的免費配額是分開算的，所以放在清單最後面當保底。
 export const GEMINI_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemma-3-27b-it'];
-export const SAMPLE_INTERVAL_KM = 8;
-export const MAX_REVIEW_CANDIDATES = 60;
+// 沿路取樣：Places 搜尋是按「次數」計費（跟半徑大小無關），取樣點越多越耗免費額度。
+// 短路線用至少 MIN_SAMPLE_INTERVAL_KM 的間距讓涵蓋率夠密，長路線則把間距拉大，
+// 確保一次順路搜尋最多只打 MAX_SAMPLE_POINTS 次
+export const MIN_SAMPLE_INTERVAL_KM = 3;
+export const MAX_SAMPLE_POINTS = 12;
+// 填了「評論要提到的餐點」時，最多對幾間候選店家查評論（每間一次 Place Details 計費）
+export const MAX_REVIEW_CANDIDATES = 20;
+// 同時送出的 Places 請求數上限，平行查詢比逐一查詢快很多，但不要一次全部丟出去
+export const PLACES_CONCURRENCY = 6;
 // 點卡片/marker 開 InfoWindow 時會強制 zoom 到這個層級（見 panForInfoWindow），
 // clusterer 的 maxZoom 必須小於這個值，不然開窗當下那顆 marker 還可能被收進 cluster
 // 隱藏掉，變成 InfoWindow 指著一顆數字圓點而不是實際的店家 marker

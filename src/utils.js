@@ -14,6 +14,20 @@ export function debounce(fn, delay) {
   };
 }
 
+// 依序對 items 跑 async fn，最多同時 limit 個；回傳結果順序跟 items 一致
+export async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 // priceLevel（$/$$/$$$/$$$$ 等級）在很多店家（尤其台灣的店）都沒有資料，
 // 但新版 Places API 另外提供 priceRange（實際金額區間），有資料時可以拿來當備援顯示
 export function formatMoney(money) {
