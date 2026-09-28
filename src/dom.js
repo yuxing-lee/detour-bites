@@ -38,3 +38,6 @@ export const openStampMapBtn = document.getElementById('openStampMapBtn');
 export const stampMapBarEl = document.getElementById('stampMapBar');
 export const stampMapSummaryEl = document.getElementById('stampMapSummary');
 export const closeStampMapBtn = document.getElementById('closeStampMapBtn');
+export const flyoverBtn = document.getElementById('flyoverBtn');
+export const flyoverCaptionEl = document.getElementById('flyoverCaption');
+export const mealBadgeEl = document.getElementById('mealBadge');

@@ -21,6 +21,7 @@
     <header>
       <h1>沿路美食搜尋</h1>
       <div class="tagline">找附近的餐廳，或填目的地找順路的</div>
+      <div id="mealBadge" class="meal-badge" hidden></div>
     </header>
 
     <label for="origin">起點</label>
@@ -105,6 +106,8 @@
   <div class="main">
     <div class="map-hint" id="mapHint">按下搜尋，地圖會顯示在這裡。</div>
     <div id="map"></div>
+    <button type="button" id="flyoverBtn" class="map-float-btn" hidden>🎬 飛覽路線</button>
+    <div id="flyoverCaption" class="flyover-caption" hidden></div>
     <div id="stampMapBar" class="stamp-map-bar" hidden>
       <span id="stampMapSummary" class="stamp-map-summary"></span>
       <button type="button" id="closeStampMapBtn" class="stamp-map-close">結束集章地圖</button>

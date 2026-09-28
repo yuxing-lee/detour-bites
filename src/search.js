@@ -39,6 +39,7 @@ import { loadGoogleMapsSDK, initMapIfNeeded, resolveLocationText } from './googl
 import { applyFiltersAndRender } from './results.js';
 import { resetDiscoverResult } from './discover.js';
 import { playRouteReveal } from './routeAnimation.js';
+import { watchRenderingTypeForFlyover } from './flyover.js';
 
 let savedOrigin = '';
 // 這次搜尋是哪顆按鈕觸發的，轉圈動畫只顯示在那顆上
@@ -341,6 +342,7 @@ async function runSearch(mode) {
   try {
     await loadGoogleMapsSDK();
     initMapIfNeeded();
+    watchRenderingTypeForFlyover();
 
     if (destination) {
       mapState.directionsRenderer.setMap(mapState.map);

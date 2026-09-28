@@ -11,6 +11,7 @@ import {
 import { mapState, searchState } from './state.js';
 import { escapeHtml, debounce, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance } from './utils.js';
 import { cancelRouteReveal, finishRouteReveal, resumePendingRouteReveal } from './routeAnimation.js';
+import { currentMealTheme } from './mealTheme.js';
 
 // Advanced Markers 一定要搭配 Map ID 才能用；沒設定 Map ID 時整套退回舊版 Marker，
 // 讓 secret 還沒設好的環境也能正常運作
@@ -178,7 +179,7 @@ export function initMapIfNeeded() {
   mapState.directionsRenderer = new google.maps.DirectionsRenderer({
     map: mapState.map,
     suppressMarkers: false,
-    polylineOptions: { strokeColor: '#f2a340', strokeWeight: 5 }
+    polylineOptions: { strokeColor: currentMealTheme().amber, strokeWeight: 5 }
   });
   mapHintEl.style.display = 'none';
 }
@@ -251,7 +252,7 @@ function markerIcon(highlighted) {
   return {
     path: google.maps.SymbolPath.CIRCLE,
     scale: highlighted ? 13 : 9,
-    fillColor: highlighted ? '#ffb85c' : '#f2a340',
+    fillColor: highlighted ? currentMealTheme().amberHi : currentMealTheme().amber,
     fillOpacity: 1,
     strokeColor: '#12172b',
     strokeWeight: highlighted ? 2.5 : 1.5
@@ -443,9 +444,56 @@ function buildInfoWindowContent(p, pos) {
 // 工具列下方那一小條），彈窗會被裁掉或蓋住其他 UI。這裡先置中，再把視角往上
 // 移一點，讓 marker 落在畫面偏下方，上方多留一些淨空的彈窗空間
 export function panForInfoWindow(pos, zoom) {
+  // 直接跳過去的時候，把還在飛的 flyToForInfoWindow 停掉，不然下一幀又會被它拉走
+  flyToken++;
   mapState.map.panTo(pos);
   if (typeof zoom === 'number') mapState.map.setZoom(zoom);
   mapState.map.panBy(0, -110);
+}
+
+// 「飛過去」版的 panForInfoWindow：鏡頭先稍微拉遠、再拉近降落到目標，看起來像從地圖上飛過去。
+// 距離越遠拉得越高；使用者設定減少動態效果時直接跳過去。回傳的 Promise 在降落後 resolve，
+// 呼叫端接著再開 InfoWindow。連續呼叫時，前一次沒飛完的會被放棄（不會 resolve 兩次開兩個窗）
+let flyToken = 0;
+export function flyToForInfoWindow(pos, zoom) {
+  const map = mapState.map;
+  const token = ++flyToken;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  // 點陣地圖不支援小數縮放層級，拉高再降落的弧線會變成一格一格跳，直接用原本的平移就好
+  const isVector = map.getRenderingType?.() === google.maps.RenderingType?.VECTOR;
+  if (reduced || !isVector || !map.getCenter()) {
+    panForInfoWindow(pos, zoom);
+    return Promise.resolve(true);
+  }
+  const from = map.getCenter();
+  const fromZoom = map.getZoom();
+  const target = new google.maps.LatLng(pos.lat, pos.lng);
+  const distKm = google.maps.geometry.spherical.computeDistanceBetween(from, target) / 1000;
+  // 拉高的幅度：同一個畫面內幾乎不拉，距離每多一倍多拉半級，最多 3 級
+  const bump = Math.min(3, Math.max(0, Math.log2(distKm + 1) * 0.5));
+  const duration = 1100;
+  const start = performance.now();
+  return new Promise(resolve => {
+    const tick = (now) => {
+      if (token !== flyToken) {
+        resolve(false);
+        return;
+      }
+      const t = Math.min(1, (now - start) / duration);
+      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      map.moveCamera({
+        center: { lat: from.lat() + (target.lat() - from.lat()) * e, lng: from.lng() + (target.lng() - from.lng()) * e },
+        zoom: fromZoom + (zoom - fromZoom) * e - bump * Math.sin(Math.PI * t)
+      });
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        map.panBy(0, -110);
+        resolve(true);
+      }
+    };
+    requestAnimationFrame(tick);
+  });
 }
 
 // 集章地圖這類不是搜尋結果的標記用：直接給 HTML 內容，跟搜尋結果共用同一個 InfoWindow，

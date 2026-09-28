@@ -1,6 +1,6 @@
 import { GOOGLE_MAP_ID, ROUTE_REVEAL_DURATION_MS } from './config.js';
 import { mapState } from './state.js';
-import { buildDetailedRoutePath } from './routeMath.js';
+import { buildDetailedRoutePath, createPathWalker } from './routeMath.js';
 
 // 「沿路開過去」動畫：順路搜尋完成後，一台小車從起點沿路線開到終點，
 // 車子經過哪間店（店的 _routeProgress ≤ 車子目前開過的距離），那間店的標記才冒出來。
@@ -56,12 +56,8 @@ function start(route, places) {
   const path = buildDetailedRoutePath(route);
   if (!path || path.length < 2) return;
 
-  // 每個路徑點從起點累積的距離，之後用二分搜尋找車子目前落在哪一段
-  const cumulative = [0];
-  for (let i = 1; i < path.length; i++) {
-    cumulative.push(cumulative[i - 1] + google.maps.geometry.spherical.computeDistanceBetween(path[i - 1], path[i]));
-  }
-  const total = cumulative[cumulative.length - 1];
+  const walker = createPathWalker(path);
+  const total = walker.total;
   if (total <= 0) return;
 
   const markers = mapState.placeMarkers.slice();
@@ -102,7 +98,6 @@ function start(route, places) {
   active.dragListener = mapState.map.addListener('dragstart', () => finishRouteReveal());
 
   const startTime = performance.now();
-  let segIndex = 1;
   const tick = (now) => {
     if (!active) return;
     const t = Math.min(1, (now - startTime) / ROUTE_REVEAL_DURATION_MS);
@@ -110,14 +105,9 @@ function start(route, places) {
     const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     const traveled = eased * total;
 
-    while (segIndex < cumulative.length - 1 && cumulative[segIndex] < traveled) segIndex++;
-    const A = path[segIndex - 1];
-    const B = path[segIndex];
-    const segLen = cumulative[segIndex] - cumulative[segIndex - 1];
-    const frac = segLen > 0 ? Math.min(1, Math.max(0, (traveled - cumulative[segIndex - 1]) / segLen)) : 1;
-    active.carMarker.position = google.maps.geometry.spherical.interpolate(A, B, frac);
+    const { position, heading } = walker.at(traveled);
+    active.carMarker.position = position;
     // 🚗 預設車頭朝左，往東開（heading 0~180）時水平翻轉，讓車頭大致朝行進方向
-    const heading = google.maps.geometry.spherical.computeHeading(A, B);
     car.classList.toggle('route-car-east', heading > 0 && heading < 180);
 
     while (active.nextIndex < active.queue.length && active.queue[active.nextIndex].progress <= traveled) {
@@ -144,7 +134,7 @@ function revealMarker(marker) {
 
 function teardown() {
   cancelAnimationFrame(active.rafId);
-  if (active.dragListener) active.dragListener.remove();
+  active.dragListener?.remove();
   const car = active.carMarker;
   car.content.classList.add('route-car-leave');
   setTimeout(() => { car.map = null; }, 400);

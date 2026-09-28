@@ -7,6 +7,7 @@ import { reviewSnippet } from './reviews.js';
 import { clearPlaceMarkers, createPlaceMarker, onMarkerClick, onMarkerHover, setPlaceHighlighted, setMarkerEaten, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
 import { wireEatenWidget, isEaten } from './eatenList.js';
 import { exitStampMap } from './stampMap.js';
+import { stopFlyover, refreshFlyoverButton } from './flyover.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 
 // 結果清單跟「踩新點」共用的勾選篩選條件
@@ -59,6 +60,7 @@ export function renderResults(places) {
   // 集章地圖開著的時候有新結果要顯示（重新搜尋、改篩選），先結束集章地圖，
   // 視角交給這次的搜尋結果，不用還原
   exitStampMap({ restoreView: false });
+  stopFlyover();
   clearPlaceMarkers();
   mapState.placeData = places;
 
@@ -150,4 +152,5 @@ export function renderResults(places) {
       algorithm: new SuperClusterAlgorithm({ maxZoom: CLUSTER_MAX_ZOOM })
     });
   }
+  refreshFlyoverButton();
 }

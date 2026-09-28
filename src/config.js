@@ -22,6 +22,12 @@ export const PLACE_INFO_ZOOM = 15;
 export const CLUSTER_MAX_ZOOM = PLACE_INFO_ZOOM - 1;
 // 「沿路開過去」動畫的總長度：不論路線多長都固定這麼久，長路線開得快、短路線開得慢
 export const ROUTE_REVEAL_DURATION_MS = 4000;
+// 「路線飛覽」鏡頭：傾斜角度（向量地圖在高縮放層級最多 67.5°），以及飛行時間 = 每公里幾毫秒，
+// 夾在最短/最長之間，短路線不會一閃而過、長路線也不會飛到不耐煩
+export const FLYOVER_TILT = 60;
+export const FLYOVER_MS_PER_KM = 600;
+export const FLYOVER_MIN_MS = 8000;
+export const FLYOVER_MAX_MS = 30000;
 
 // 台灣靠右行駛：行進方向右側的店可以直接彎進去，左側（對向）的店在寬的路上要迴轉。
 // 店家座標常標在建築物中心甚至路中間，離路線中心這個距離內的店一律視為同側，避免誤判
@@ -121,6 +127,17 @@ export const FOOD_EMOJI_BY_TYPE_WORD = {
   cafe: '☕', coffee: '☕', tea: '🧋', wine: '🍷', bar: '🍺', pub: '🍺'
 };
 export const FOOD_EMOJI_DEFAULT = '🍽️';
+
+// 用餐時段主題：依現在幾點換整站的強調色（按鈕、地圖標記、路線顏色）跟標題下的小標語。
+// from/to 是 24 小時制的整點，to 不含；宵夜跨午夜所以 from > to。
+// 顏色都要夠亮，按鈕上的深色字（#221202）才看得清楚
+export const MEAL_THEMES = [
+  { id: 'breakfast', from: 5, to: 10, emoji: '🍳', label: '早餐時段', tagline: '早安！先吃早餐再出發', amber: '#f5c451', amberHi: '#ffd97a', amberDim: '#b8912e' },
+  { id: 'lunch', from: 10, to: 14, emoji: '🍱', label: '午餐時段', tagline: '中午吃什麼？沿路找找', amber: '#f2a340', amberHi: '#ffb85c', amberDim: '#b97c2c' },
+  { id: 'tea', from: 14, to: 17, emoji: '🧋', label: '下午茶時段', tagline: '來點甜的，順路喝一杯', amber: '#f39ab8', amberHi: '#ffb8cf', amberDim: '#b36a85' },
+  { id: 'dinner', from: 17, to: 21, emoji: '🍲', label: '晚餐時段', tagline: '下班路上，順便吃頓好的', amber: '#ff8a4c', amberHi: '#ffab7a', amberDim: '#bf5f2c' },
+  { id: 'lateNight', from: 21, to: 5, emoji: '🌙', label: '宵夜時段', tagline: '深夜嘴饞？記得勾「只顯示營業中」', amber: '#a99bff', amberHi: '#c6bcff', amberDim: '#6f62c4' }
+];
 
 export const EATEN_GOOD_RATING_THRESHOLD = 4;
 // 勾選「包含吃過的高評價餐廳」時，固定有這個比例的機率會從舊愛裡抽，其餘機率抽新店，

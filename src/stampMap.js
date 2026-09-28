@@ -16,6 +16,7 @@ import {
 } from './googleMaps.js';
 import { finishRouteReveal, discardPendingRouteReveal } from './routeAnimation.js';
 import { setStatus } from './ui.js';
+import { stopFlyover, refreshFlyoverButton } from './flyover.js';
 
 // 「集章地圖」：把所有標記過吃過的店，用印章的樣子一次攤在地圖上，
 // 讓吃過清單變成一本可以慢慢集滿的美食圖鑑。
@@ -56,6 +57,7 @@ async function backfillLocations(entries) {
 }
 
 function hideSearchLayer() {
+  stopFlyover();
   // 沿路動畫還在跑或等著手機切到地圖頁籤才播的，都先收掉，不然切到地圖時會把搜尋標記又放出來
   finishRouteReveal();
   discardPendingRouteReveal();
@@ -96,6 +98,9 @@ export async function openStampMap() {
     isOpen = true;
     stampMapBarEl.hidden = false;
     setMobileView('map');
+    // 先放一個空的對焦函式代表「集章地圖開著」，飛覽按鈕看到它就會隱藏；有印章時下面再換成真的
+    mapState.refitStampView = () => {};
+    refreshFlyoverButton();
 
     const located = entries
       .filter(e => Number.isFinite(e.lat) && Number.isFinite(e.lng))
@@ -158,6 +163,7 @@ export function exitStampMap({ restoreView = true } = {}) {
   closeActiveInfoWindow();
   stampMapBarEl.hidden = true;
   if (restoreView) restoreSearchLayer();
+  refreshFlyoverButton();
 }
 
 openStampMapBtn.addEventListener('click', openStampMap);
