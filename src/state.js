@@ -6,7 +6,8 @@ export const mapState = {
   directionsRenderer: null,
   placeMarkers: [],
   placeMarkerCluster: null,
-  placeCards: []
+  placeCards: [],
+  placeData: [] // 目前清單/地圖上顯示的店家，跟 placeMarkers、placeCards 同順序
 };
 
 // 搜尋/路線相關的共用可變狀態：由 search.js 的 runSearch/searchAlongRoute 寫入，

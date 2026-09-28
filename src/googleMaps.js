@@ -10,6 +10,7 @@ import {
 } from './dom.js';
 import { mapState, searchState } from './state.js';
 import { escapeHtml, debounce, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance } from './utils.js';
+import { cancelRouteReveal, finishRouteReveal, resumePendingRouteReveal } from './routeAnimation.js';
 
 // Advanced Markers 一定要搭配 Map ID 才能用；沒設定 Map ID 時整套退回舊版 Marker，
 // 讓 secret 還沒設好的環境也能正常運作
@@ -202,6 +203,7 @@ export function setMobileView(view) {
     mapState.map.setCenter(searchState.lastOriginLocation);
     mapState.map.setZoom(15);
   }
+  resumePendingRouteReveal();
 }
 
 mobileViewTabsEl.querySelectorAll('.mobile-view-tab').forEach(btn => {
@@ -224,6 +226,7 @@ export async function resolveLocationText(text) {
 let activeInfoWindow = null;
 
 export function clearPlaceMarkers() {
+  cancelRouteReveal();
   if (mapState.placeMarkerCluster) {
     mapState.placeMarkerCluster.clearMarkers();
     mapState.placeMarkerCluster = null;
@@ -231,6 +234,7 @@ export function clearPlaceMarkers() {
   mapState.placeMarkers.forEach(removeMarker);
   mapState.placeMarkers = [];
   mapState.placeCards = [];
+  mapState.placeData = [];
   if (activeInfoWindow) {
     activeInfoWindow.close();
     activeInfoWindow = null;
@@ -396,6 +400,8 @@ export function panForInfoWindow(pos, zoom) {
 // 開啟前先收掉前一個開著的 InfoWindow，避免在地圖上切換餐廳時舊的視窗還留著。
 // card 是這間店在清單裡對應的卡片元素，有給的話才會顯示/接上「AI 解析」按鈕
 export function openPlaceInfoWindow(p, pos, anchor, card) {
+  // 動畫還在跑的話，要開窗的這間店可能還沒冒出來，先讓全部標記就位
+  finishRouteReveal();
   if (activeInfoWindow) activeInfoWindow.close();
   activeInfoWindow = new google.maps.InfoWindow({
     content: buildInfoWindowContent(p, pos)

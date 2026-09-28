@@ -20,6 +20,8 @@ export const PLACES_CONCURRENCY = 6;
 // 隱藏掉，變成 InfoWindow 指著一顆數字圓點而不是實際的店家 marker
 export const PLACE_INFO_ZOOM = 15;
 export const CLUSTER_MAX_ZOOM = PLACE_INFO_ZOOM - 1;
+// 「沿路開過去」動畫的總長度：不論路線多長都固定這麼久，長路線開得快、短路線開得慢
+export const ROUTE_REVEAL_DURATION_MS = 4000;
 
 // 台灣靠右行駛：行進方向右側的店可以直接彎進去，左側（對向）的店在寬的路上要迴轉。
 // 店家座標常標在建築物中心甚至路中間，離路線中心這個距離內的店一律視為同側，避免誤判

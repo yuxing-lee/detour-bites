@@ -715,6 +715,20 @@
     .map-pin-enter { animation: none; }
   }
 
+  /* 「沿路開過去」動畫：車子還沒開到的店先藏起來，開到了才加上 map-pin-enter 冒出來 */
+  .map-pin-waiting { visibility: hidden; }
+
+  .route-car {
+    font-size: 26px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+  }
+
+  .route-car-east { transform: scaleX(-1); }
+  .route-car-leave { opacity: 0; }
+
   .place-card .meta {
     font-size: 12px;
     color: var(--muted);

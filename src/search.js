@@ -38,6 +38,7 @@ import { localParseKeyword, parseKeywordWithGemini, semanticMatchDishKeyword } f
 import { loadGoogleMapsSDK, initMapIfNeeded, resolveLocationText } from './googleMaps.js';
 import { applyFiltersAndRender } from './results.js';
 import { resetDiscoverResult } from './discover.js';
+import { playRouteReveal } from './routeAnimation.js';
 
 let savedOrigin = '';
 // 這次搜尋是哪顆按鈕觸發的，轉圈動畫只顯示在那顆上
@@ -297,6 +298,8 @@ async function searchAlongRoute(routeIndex) {
     discoverBoxEl.hidden = searchState.lastResults.length === 0;
     resetDiscoverResult();
     applyFiltersAndRender();
+    // 只在「新的一次搜尋」播，之後改排序/篩選重新渲染清單時不重播
+    if (hasRoute) playRouteReveal(searchState.allRoutes[routeIndex]);
     if (dishKeyword) {
       const aiNote = dishAiMatchedCount ? `（其中 ${dishAiMatchedCount} 間是透過 AI 語意比對找到）` : '';
       setStatus(`完成！在 ${cappedCandidateCount} 間候選餐廳中比對評論後，找到 ${searchState.lastResults.length} 間符合「${dishKeyword}」的餐廳${aiNote}。`, 'ok');

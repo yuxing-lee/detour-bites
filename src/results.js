@@ -56,6 +56,7 @@ export function renderResults(places) {
   resultCountEl.textContent = `找到 ${places.length} 間餐廳`;
   resultListEl.innerHTML = '';
   clearPlaceMarkers();
+  mapState.placeData = places;
 
   places.forEach((p, i) => {
     const pos = { lat: p.location.latitude, lng: p.location.longitude };
