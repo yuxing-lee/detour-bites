@@ -5,14 +5,15 @@ import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistanc
 import { applyCheckboxFilters } from './results.js';
 import { isEaten, eatenRating, wireEatenWidget, weightedRandomPick } from './eatenList.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
-import { panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
+import { flyToForInfoWindow, openPlaceInfoWindow, createPlaceMarker, removeMarker, setMarkerEaten, setPlaceHighlighted } from './googleMaps.js';
+import { stopFlyover } from './flyover.js';
 
 let discoverMarker = null;
 let lastDiscoverPickId = null;
 
 function clearDiscoverMarker() {
   if (discoverMarker) {
-    discoverMarker.setMap(null);
+    removeMarker(discoverMarker);
     discoverMarker = null;
   }
 }
@@ -68,31 +69,69 @@ function renderDiscoverResult(p) {
     </div>
   `;
 
-  wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name);
+  // 推薦的店也在搜尋結果清單裡，這裡標記吃過時順便更新結果清單那顆地圖標記的小印章
+  const syncResultMarker = () => {
+    const idx = mapState.placeData.findIndex(item => item.id === p.id);
+    if (idx >= 0) setMarkerEaten(mapState.placeMarkers[idx], isEaten(p.id));
+  };
+  wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name, syncResultMarker, pos);
   wireReviewAndAiActions(discoverResultEl, p, name);
   wirePhotoGalleryAction(discoverResultEl, p);
 
   clearDiscoverMarker();
-  discoverMarker = new google.maps.Marker({
-    position: pos,
-    map: mapState.map,
-    title: name,
-    icon: {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 9,
-      fillColor: '#6fbf8b',
-      fillOpacity: 1,
-      strokeColor: '#12172b',
-      strokeWeight: 2
-    },
-    zIndex: 999
+  discoverMarker = createPlaceMarker({ position: pos, title: name, variant: 'discover', map: mapState.map });
+  const marker = discoverMarker;
+  flyToForInfoWindow(pos, 16).then(landed => {
+    // 飛行途中又抽了下一間的話，這一間的窗就不用開了
+    if (landed && marker === discoverMarker) openPlaceInfoWindow(p, pos, marker, discoverResultEl);
   });
-  panForInfoWindow(pos, 16);
-  openPlaceInfoWindow(p, pos, discoverMarker, discoverResultEl);
 }
 
-discoverBtn.addEventListener('click', () => {
-  if (!searchState.lastResults.length) return;
+let spinning = false;
+
+// 「轉盤」：揭曉前先在目前清單/地圖上的店家之間快速輪流亮起來，越轉越慢，
+// 最後停在抽中的那間（抽中的店不在目前顯示的清單裡時，停在隨機一間後直接揭曉）。
+// 結果本身在轉之前就已經抽好了，轉盤只是揭曉的過程
+function spinRoulette(picked) {
+  const shown = mapState.placeData;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (shown.length < 2 || reduced) return Promise.resolve();
+
+  const finalIndex = shown.findIndex(p => p.id === picked.id);
+  const steps = 14;
+  let prev = -1;
+  let current = Math.floor(Math.random() * shown.length);
+  discoverResultEl.innerHTML = '<div class="discover-spinning">🎰 轉盤轉動中…<span class="discover-spinning-name"></span></div>';
+  const nameEl = discoverResultEl.querySelector('.discover-spinning-name');
+
+  return new Promise(resolve => {
+    const step = (k) => {
+      if (prev >= 0) setPlaceHighlighted(prev, false);
+      if (k === steps - 1 && finalIndex >= 0) {
+        current = finalIndex;
+      } else {
+        // 每一步換到另一間，不要原地停
+        current = (current + 1 + Math.floor(Math.random() * (shown.length - 1))) % shown.length;
+      }
+      setPlaceHighlighted(current, true);
+      nameEl.textContent = ` ${current + 1}. ${shown[current].displayName?.text || ''}`;
+      prev = current;
+      if (k < steps - 1) {
+        // 間隔從 60ms 慢慢拉長到 ~300ms，像轉盤慢慢停下來
+        setTimeout(() => step(k + 1), 60 + 240 * Math.pow(k / (steps - 1), 2));
+      } else {
+        setTimeout(() => {
+          setPlaceHighlighted(current, false);
+          resolve();
+        }, 450);
+      }
+    };
+    step(0);
+  });
+}
+
+discoverBtn.addEventListener('click', async () => {
+  if (!searchState.lastResults.length || spinning) return;
 
   discoverBtn.classList.remove('rolling');
   void discoverBtn.offsetWidth;
@@ -127,5 +166,16 @@ discoverBtn.addEventListener('click', () => {
   }
 
   lastDiscoverPickId = picked.id;
+  stopFlyover();
+  spinning = true;
+  discoverBtn.disabled = true;
+  try {
+    await spinRoulette(picked);
+  } finally {
+    spinning = false;
+    discoverBtn.disabled = false;
+  }
+  // 轉盤轉的時候使用者重新搜尋了，這次的結果就作廢
+  if (lastDiscoverPickId !== picked.id) return;
   renderDiscoverResult(picked);
 });

@@ -48,7 +48,7 @@ npm run preview
 
 部署流程（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）已寫好，push 到 `main`/`master` 就會自動建置並發布，你只需要做兩件事：
 
-1. **設定 GitHub Secret**：repo 的 Settings → Secrets and variables → Actions → New repository secret，新增 `VITE_GOOGLE_MAPS_API_KEY`，值填你的 Google Maps API key。若要啟用 AI 摘要/AI 解析功能，同樣新增一個 `VITE_GEMINI_API_KEY` secret，值填你的 Gemini API key（選填，留空則 AI 功能不會出現）。
+1. **設定 GitHub Secret**：repo 的 Settings → Secrets and variables → Actions → New repository secret，新增 `VITE_GOOGLE_MAPS_API_KEY`，值填你的 Google Maps API key。若要啟用 AI 摘要/AI 解析功能，同樣新增一個 `VITE_GEMINI_API_KEY` secret，值填你的 Gemini API key（選填，留空則 AI 功能不會出現）。另外可以選填 `VITE_GOOGLE_MAP_ID`（在 Google Cloud Console → Google Maps Platform → 地圖管理建立，類型選 JavaScript／向量，且要跟 API key 同一個專案），設定後地圖會改用 Advanced Markers（依店家類型顯示美食圖示）；留空則維持原本的數字圓點標記。
 2. **啟用 GitHub Pages（Actions 來源）**：repo 的 Settings → Pages → Build and deployment → Source 選擇 **GitHub Actions**（不是選分支）。
 
 設定好之後，之後每次 push 到 `main`/`master` 都會觸發 workflow：`npm ci` → `npm run build`（會用剛剛設定的 secret 當環境變數注入）→ 把 `dist/` 部署到 GitHub Pages。也可以在 repo 的 Actions 分頁手動點 **Run workflow** 觸發一次。

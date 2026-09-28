@@ -2,10 +2,12 @@ import { MarkerClusterer, SuperClusterAlgorithm } from '@googlemaps/markercluste
 import { PRICE_RANK, GEMINI_API_KEY, PLACE_INFO_ZOOM, CLUSTER_MAX_ZOOM } from './config.js';
 import { targetCountInput, openNowOnlyEl, sameSideOnlyEl, sortSelectEl, resultCountEl, resultListEl } from './dom.js';
 import { mapState, searchState } from './state.js';
-import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml } from './utils.js';
+import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml, foodEmoji } from './utils.js';
 import { reviewSnippet } from './reviews.js';
-import { clearPlaceMarkers, markerIcon, markerLabel, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
-import { wireEatenWidget } from './eatenList.js';
+import { clearPlaceMarkers, createPlaceMarker, onMarkerClick, onMarkerHover, setPlaceHighlighted, setMarkerEaten, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
+import { wireEatenWidget, isEaten } from './eatenList.js';
+import { exitStampMap } from './stampMap.js';
+import { stopFlyover, refreshFlyoverButton } from './flyover.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 
 // 結果清單跟「踩新點」共用的勾選篩選條件
@@ -55,20 +57,19 @@ targetCountInput.addEventListener('change', applyFiltersAndRender);
 export function renderResults(places) {
   resultCountEl.textContent = `找到 ${places.length} 間餐廳`;
   resultListEl.innerHTML = '';
+  // 集章地圖開著的時候有新結果要顯示（重新搜尋、改篩選），先結束集章地圖，
+  // 視角交給這次的搜尋結果，不用還原
+  exitStampMap({ restoreView: false });
+  stopFlyover();
   clearPlaceMarkers();
+  mapState.placeData = places;
 
   places.forEach((p, i) => {
     const pos = { lat: p.location.latitude, lng: p.location.longitude };
     const name = p.displayName?.text || '(未命名)';
     const address = p.formattedAddress || '';
 
-    const marker = new google.maps.Marker({
-      position: pos,
-      title: name,
-      icon: markerIcon(false),
-      label: markerLabel(i),
-      zIndex: 10
-    });
+    const marker = createPlaceMarker({ position: pos, title: name, index: i, emoji: foodEmoji(p.primaryType), eaten: isEaten(p.id) });
     mapState.placeMarkers.push(marker);
 
     const card = document.createElement('div');
@@ -124,15 +125,14 @@ export function renderResults(places) {
     // 清單卡片 ↔ 地圖標記雙向連動：滑過任一邊，另一邊會一起亮起來
     card.addEventListener('mouseenter', () => setPlaceHighlighted(i, true));
     card.addEventListener('mouseleave', () => setPlaceHighlighted(i, false));
-    marker.addListener('mouseover', () => setPlaceHighlighted(i, true));
-    marker.addListener('mouseout', () => setPlaceHighlighted(i, false));
-    marker.addListener('click', () => {
+    onMarkerHover(marker, () => setPlaceHighlighted(i, true), () => setPlaceHighlighted(i, false));
+    onMarkerClick(marker, () => {
       panForInfoWindow(pos, PLACE_INFO_ZOOM);
       openPlaceInfoWindow(p, pos, marker, card);
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
-    wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
+    wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name, () => setMarkerEaten(marker, isEaten(p.id)), pos);
 
     wireReviewAndAiActions(card, p, name);
     wirePhotoGalleryAction(card, p);
@@ -152,4 +152,5 @@ export function renderResults(places) {
       algorithm: new SuperClusterAlgorithm({ maxZoom: CLUSTER_MAX_ZOOM })
     });
   }
+  refreshFlyoverButton();
 }

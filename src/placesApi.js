@@ -140,3 +140,25 @@ export async function fetchPlacePhotos(placeId) {
     return null;
   }
 }
+
+// 集章地圖用：舊版「吃過」清單只存了店名跟評分，沒有座標，第一次打開集章地圖時
+// 用 Place Details (New) 只抓 location 補上（Essentials 等級，最便宜的一檔），補到就存回清單，之後不會再查
+export async function fetchPlaceLocation(placeId) {
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+      headers: {
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'location'
+      }
+    });
+    if (!res.ok) {
+      console.warn('取得店家座標失敗：', res.status, await res.text());
+      return null;
+    }
+    const data = await res.json();
+    return data.location ? { lat: data.location.latitude, lng: data.location.longitude } : null;
+  } catch (err) {
+    console.warn('取得店家座標發生錯誤：', err);
+    return null;
+  }
+}

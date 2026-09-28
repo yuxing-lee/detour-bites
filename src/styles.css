@@ -4,7 +4,11 @@
     --panel: #171d35;
     --panel-line: #2a3355;
     --paper: #f3f1ea;
+    /* 強調色會依用餐時段換掉（見 mealTheme.js），這裡是午餐時段的預設值；
+       --amber-rgb 給需要半透明的 rgba() 用 */
     --amber: #f2a340;
+    --amber-rgb: 242, 163, 64;
+    --amber-hi: #ffb85c;
     --amber-dim: #b97c2c;
     --muted: #9aa3c7;
     --good: #6fbf8b;
@@ -127,7 +131,7 @@
   input:focus, select:focus {
     outline: none;
     border-color: var(--amber);
-    box-shadow: 0 0 0 3px rgba(242, 163, 64, 0.15);
+    box-shadow: 0 0 0 3px rgba(var(--amber-rgb), 0.15);
   }
 
   .row2 {
@@ -150,12 +154,12 @@
     transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  button:hover { background: #ffb85c; transform: translateY(-1px); }
+  button:hover { background: var(--amber-hi); transform: translateY(-1px); }
   button:active { transform: translateY(0) scale(0.97); }
   button:disabled { background: #4a4530; color: #8b8670; cursor: not-allowed; transform: none; box-shadow: none; }
 
   .search-actions button:hover, .discover-btn:hover {
-    box-shadow: 0 8px 20px rgba(242, 163, 64, 0.35);
+    box-shadow: 0 8px 20px rgba(var(--amber-rgb), 0.35);
   }
 
   .search-actions button.is-loading {
@@ -247,7 +251,7 @@
     font-weight: 700;
   }
 
-  .secondary-btn:hover { background: rgba(242, 163, 64, 0.12); }
+  .secondary-btn:hover { background: rgba(var(--amber-rgb), 0.12); }
   .secondary-btn:disabled { background: transparent; border-color: var(--panel-line); color: var(--muted); cursor: not-allowed; }
 
   .status {
@@ -477,6 +481,7 @@
 
   .modal-toolbar {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 12px 18px;
     border-bottom: 1px solid var(--panel-line);
@@ -524,6 +529,18 @@
     font-weight: 600;
     color: var(--paper);
   }
+
+  .discover-spinning {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px dashed var(--amber-dim);
+    border-radius: 8px;
+    color: var(--amber);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .discover-spinning-name { color: var(--paper); font-weight: 600; }
 
   .discover-result-empty {
     margin-top: 10px;
@@ -611,7 +628,7 @@
   .place-card.highlighted {
     border-color: var(--amber);
     transform: translateY(-3px);
-    box-shadow: 0 0 0 2px rgba(242, 163, 64, 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 0 2px rgba(var(--amber-rgb), 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
   }
 
   .place-card .name {
@@ -637,6 +654,296 @@
   }
 
   .place-card.highlighted .place-index { transform: scale(1.15); }
+
+  /* 有設定 Map ID 時的 Advanced Marker 外觀：圓形泡泡裡放美食圖示，右上角是跟清單對應的編號，
+     底下的小尖角尖端對準店家座標（Advanced Marker 的錨點在 content 底部中央）。
+     配色沿用舊版 marker 的橘色／綠色 */
+  .map-pin {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 7px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid var(--amber);
+    background: #1b2140;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    transform-origin: 50% calc(100% + 7px);
+    transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .map-pin::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -9px;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top: 6px solid var(--amber);
+  }
+
+  .map-pin-emoji {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .map-pin-index {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    border: 1.5px solid #12172b;
+    background: var(--amber);
+    color: #12172b;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+  }
+
+  .map-pin.highlighted {
+    border-color: var(--amber-hi);
+    background: #2a3355;
+    transform: scale(1.3);
+  }
+
+  .map-pin.highlighted::after { border-top-color: var(--amber-hi); }
+  .map-pin.highlighted .map-pin-index { background: var(--amber-hi); }
+
+  .map-pin-discover { border-color: #6fbf8b; }
+  .map-pin-discover::after { border-top-color: #6fbf8b; }
+
+  .map-pin-enter { animation: pinPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+  @keyframes pinPop {
+    0% { opacity: 0; transform: translateY(-14px) scale(0.3); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-pin-enter { animation: none; }
+  }
+
+  /* 「沿路開過去」動畫：車子還沒開到的店先藏起來，開到了才加上 map-pin-enter 冒出來 */
+  .map-pin-waiting { visibility: hidden; }
+
+  .route-car {
+    font-size: 26px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+  }
+
+  .route-car-east { transform: scaleX(-1); }
+  .route-car-leave { opacity: 0; }
+
+  /* 搜尋結果裡吃過的店：美食泡泡左下角蓋一個紅色「吃」字小印章 */
+  .map-pin-stamp {
+    position: absolute;
+    left: -8px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid #d9453b;
+    background: #f3f1ea;
+    color: #d9453b;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+    transform: rotate(-14deg);
+  }
+
+  /* 集章地圖的印章：米白紙底＋紅色（4★ 以上金色）雙圈章，中間一個斜斜的「吃」字 */
+  .map-stamp {
+    --stamp-ink: #d9453b;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-bottom: 4px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 3px double var(--stamp-ink);
+    background: rgba(243, 241, 234, 0.95);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    transform: rotate(-12deg);
+  }
+
+  .map-stamp-gold { --stamp-ink: #e0a526; }
+
+  .map-stamp-text {
+    color: var(--stamp-ink);
+    font-size: 17px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .map-stamp-rating {
+    position: absolute;
+    bottom: -9px;
+    left: 50%;
+    transform: translateX(-50%) rotate(12deg);
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--stamp-ink);
+    color: #12172b;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 14px;
+    white-space: nowrap;
+  }
+
+  /* 蓋章動畫：從大、淡、正的狀態「碰」一下壓到地圖上 */
+  .map-stamp-enter { animation: stampDown 0.35s cubic-bezier(0.3, 1.4, 0.6, 1) both; }
+
+  @keyframes stampDown {
+    0% { opacity: 0; transform: scale(2.2) rotate(0deg); }
+    70% { opacity: 1; transform: scale(0.92) rotate(-12deg); }
+    100% { opacity: 1; transform: scale(1) rotate(-12deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-stamp-enter { animation: none; }
+  }
+
+  /* 左右各留 12px 再用 fit-content + auto margin 置中：不用 left:50% + translateX，
+     不然絕對定位的寬度只剩容器的一半，手機上文字會擠成一直條 */
+  .stamp-map-bar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: fit-content;
+    margin: 0 auto;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--amber-dim);
+    background: rgba(15, 20, 40, 0.92);
+    color: var(--paper);
+    font-size: 13px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    animation: fadeIn 0.25s ease;
+  }
+
+  .stamp-map-summary { line-height: 1.4; }
+
+  /* 全站 button 預設是滿版寬＋上方留白，這顆要縮回內容寬度 */
+  .stamp-map-close {
+    flex-shrink: 0;
+    width: auto;
+    margin: 0;
+    border: 1px solid var(--amber);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+
+  .stamp-map-close:hover { background: rgba(var(--amber-rgb), 0.12); transform: none; }
+
+  /* 標題下方的用餐時段小標語，顏色跟著時段主題換 */
+  .meal-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--amber-dim);
+    background: rgba(var(--amber-rgb), 0.12);
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+    animation: fadeIn 0.4s ease;
+  }
+
+  /* 地圖上的浮動按鈕（飛覽路線）：放在下方正中間，避開左上的地圖類型切換、
+     右下的縮放按鈕跟左下的 Google 標誌 */
+  .map-float-btn {
+    position: absolute;
+    bottom: 28px;
+    left: 12px;
+    right: 12px;
+    width: fit-content;
+    margin: 0 auto;
+    z-index: 5;
+    padding: 10px 18px;
+    border-radius: 999px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    font-size: 14px;
+  }
+
+  .map-float-btn.is-flying {
+    background: rgba(15, 20, 40, 0.92);
+    color: var(--amber);
+    border: 1px solid var(--amber);
+  }
+
+  .flyover-caption {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    margin: 0 auto;
+    z-index: 5;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--amber-dim);
+    background: rgba(15, 20, 40, 0.92);
+    color: var(--paper);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  }
+
+  .flyover-caption-pop { animation: popIn 0.3s ease; }
+
+  /* 飛覽時代表目前位置的導航圓點：鏡頭會轉到跟行進方向一致，所以箭頭固定朝上 */
+  .flyover-puck {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    margin-bottom: -10px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 3px solid #f3f1ea;
+    box-shadow: 0 0 0 6px rgba(var(--amber-rgb), 0.3), 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+
+  .flyover-puck::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: -14px;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-bottom: 9px solid #f3f1ea;
+  }
 
   .place-card .meta {
     font-size: 12px;
@@ -708,7 +1015,7 @@
     margin-top: 8px;
     font-size: 12px;
     color: var(--paper);
-    background: rgba(242, 163, 64, 0.12);
+    background: rgba(var(--amber-rgb), 0.12);
     border: 1px solid var(--amber-dim);
     border-radius: 6px;
     padding: 6px 8px;
@@ -867,7 +1174,7 @@
       box-shadow: none;
     }
 
-    .mobile-view-tab:hover { background: rgba(242, 163, 64, 0.08); transform: none; }
+    .mobile-view-tab:hover { background: rgba(var(--amber-rgb), 0.08); transform: none; }
     .mobile-view-tab:active { transform: none; }
 
     .mobile-view-tab.active {

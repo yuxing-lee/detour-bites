@@ -33,6 +33,32 @@ export function buildDetailedRoutePath(route) {
   return points.length >= 2 ? points : route.overview_path;
 }
 
+// 沿路徑「開」的共用工具：先算好每個路徑點從起點累積的距離，之後給一個已經開過的距離，
+// 就能查出車子目前的座標跟行進方向。查詢距離通常是遞增的（動畫一幀一幀往前），
+// 所以記住上次停在哪一段、從那裡往後找；倒退時才從頭找
+export function createPathWalker(path) {
+  const cumulative = [0];
+  for (let i = 1; i < path.length; i++) {
+    cumulative.push(cumulative[i - 1] + google.maps.geometry.spherical.computeDistanceBetween(path[i - 1], path[i]));
+  }
+  const total = cumulative[cumulative.length - 1];
+  let segIndex = 1;
+  function at(distance) {
+    const d = Math.min(total, Math.max(0, distance));
+    if (cumulative[segIndex - 1] > d) segIndex = 1;
+    while (segIndex < cumulative.length - 1 && cumulative[segIndex] < d) segIndex++;
+    const A = path[segIndex - 1];
+    const B = path[segIndex];
+    const segLen = cumulative[segIndex] - cumulative[segIndex - 1];
+    const frac = segLen > 0 ? (d - cumulative[segIndex - 1]) / segLen : 1;
+    return {
+      position: google.maps.geometry.spherical.interpolate(A, B, frac),
+      heading: google.maps.geometry.spherical.computeHeading(A, B)
+    };
+  }
+  return { total, at };
+}
+
 function normalizeAngleRad(a) {
   while (a > Math.PI) a -= 2 * Math.PI;
   while (a < -Math.PI) a += 2 * Math.PI;

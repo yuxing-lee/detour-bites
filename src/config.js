@@ -1,5 +1,7 @@
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// 選填：有設定才會改用 Advanced Markers + 雲端樣式；沒設定就維持舊版 Marker + 程式內的 JSON 樣式
+export const GOOGLE_MAP_ID = import.meta.env.VITE_GOOGLE_MAP_ID;
 // 依序嘗試的 model 清單：每個 model 在 Google 那邊是各自獨立的免費額度，
 // 前面的 model 額度用完（或暫時出錯）就自動換下一個，盡量把整體可用額度疊加起來。
 // gemma 系列跟 Gemini 系列的免費配額是分開算的，所以放在清單最後面當保底。
@@ -18,6 +20,14 @@ export const PLACES_CONCURRENCY = 6;
 // 隱藏掉，變成 InfoWindow 指著一顆數字圓點而不是實際的店家 marker
 export const PLACE_INFO_ZOOM = 15;
 export const CLUSTER_MAX_ZOOM = PLACE_INFO_ZOOM - 1;
+// 「沿路開過去」動畫的總長度：不論路線多長都固定這麼久，長路線開得快、短路線開得慢
+export const ROUTE_REVEAL_DURATION_MS = 4000;
+// 「路線飛覽」鏡頭：傾斜角度（向量地圖在高縮放層級最多 67.5°），以及飛行時間 = 每公里幾毫秒，
+// 夾在最短/最長之間，短路線不會一閃而過、長路線也不會飛到不耐煩
+export const FLYOVER_TILT = 60;
+export const FLYOVER_MS_PER_KM = 600;
+export const FLYOVER_MIN_MS = 8000;
+export const FLYOVER_MAX_MS = 30000;
 
 // 台灣靠右行駛：行進方向右側的店可以直接彎進去，左側（對向）的店在寬的路上要迴轉。
 // 店家座標常標在建築物中心甚至路中間，離路線中心這個距離內的店一律視為同側，避免誤判
@@ -44,7 +54,10 @@ export const PLACE_FIELD_MASK = [
   'places.priceLevel',
   'places.priceRange',
   'places.currentOpeningHours.openNow',
-  'places.websiteUri'
+  'places.websiteUri',
+  // 地圖標記依店家類型顯示美食圖示用；上面的 rating / currentOpeningHours 已經是最高計費級距，
+  // 多這個欄位不會讓 Text Search / Nearby Search 的計費再往上跳
+  'places.primaryType'
 ].join(',');
 
 export const PRICE_LABELS = {
@@ -99,6 +112,31 @@ export const DISH_SYNONYM_GROUPS = [
 export const KEYWORD_FILTER_PATTERNS = [
   { re: /(現在|目前)?(營業中|還在營業|有開著|還有開|有開|開著)/g, flag: 'openNow' },
   { re: /(便宜|划算|平價|俗又大碗|俗擱大碗|cp值高)/gi, flag: 'preferCheap' }
+];
+
+// 地圖標記的美食圖示：primaryType（例如 ramen_restaurant、wine_bar）拆成單字後，
+// 從左到右第一個對得上的字決定圖示，所以 wine_bar 會是 🍷 而不是 🍺、steak_house 不會誤判成 tea。
+// 對不到的（一般 restaurant、food 等）用 FOOD_EMOJI_DEFAULT
+export const FOOD_EMOJI_BY_TYPE_WORD = {
+  ramen: '🍜', noodle: '🍜', sushi: '🍣', japanese: '🍱', korean: '🍲', chinese: '🥢', taiwanese: '🥢',
+  thai: '🍛', indian: '🍛', vietnamese: '🍜', italian: '🍝', pizza: '🍕', mexican: '🌮', french: '🥖',
+  hamburger: '🍔', burger: '🍔', fast: '🍟', sandwich: '🥪', chicken: '🍗', dumpling: '🥟',
+  steak: '🥩', barbecue: '🍖', seafood: '🦐', pot: '🍲', vegan: '🥗', vegetarian: '🥗',
+  breakfast: '🍳', brunch: '🥞', bakery: '🥐', bagel: '🥯', donut: '🍩', dessert: '🍰',
+  cake: '🍰', confectionery: '🍬', chocolate: '🍫', ice: '🍦', cream: '🍦', juice: '🧃',
+  cafe: '☕', coffee: '☕', tea: '🧋', wine: '🍷', bar: '🍺', pub: '🍺'
+};
+export const FOOD_EMOJI_DEFAULT = '🍽️';
+
+// 用餐時段主題：依現在幾點換整站的強調色（按鈕、地圖標記、路線顏色）跟標題下的小標語。
+// from/to 是 24 小時制的整點，to 不含；宵夜跨午夜所以 from > to。
+// 顏色都要夠亮，按鈕上的深色字（#221202）才看得清楚
+export const MEAL_THEMES = [
+  { id: 'breakfast', from: 5, to: 10, emoji: '🍳', label: '早餐時段', tagline: '早安！先吃早餐再出發', amber: '#f5c451', amberHi: '#ffd97a', amberDim: '#b8912e' },
+  { id: 'lunch', from: 10, to: 14, emoji: '🍱', label: '午餐時段', tagline: '中午吃什麼？沿路找找', amber: '#f2a340', amberHi: '#ffb85c', amberDim: '#b97c2c' },
+  { id: 'tea', from: 14, to: 17, emoji: '🧋', label: '下午茶時段', tagline: '來點甜的，順路喝一杯', amber: '#f39ab8', amberHi: '#ffb8cf', amberDim: '#b36a85' },
+  { id: 'dinner', from: 17, to: 21, emoji: '🍲', label: '晚餐時段', tagline: '下班路上，順便吃頓好的', amber: '#ff8a4c', amberHi: '#ffab7a', amberDim: '#bf5f2c' },
+  { id: 'lateNight', from: 21, to: 5, emoji: '🌙', label: '宵夜時段', tagline: '深夜嘴饞？記得勾「只顯示營業中」', amber: '#a99bff', amberHi: '#c6bcff', amberDim: '#6f62c4' }
 ];
 
 export const EATEN_GOOD_RATING_THRESHOLD = 4;
