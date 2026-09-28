@@ -1,5 +1,7 @@
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// 選填：有設定才會改用 Advanced Markers + 雲端樣式；沒設定就維持舊版 Marker + 程式內的 JSON 樣式
+export const GOOGLE_MAP_ID = import.meta.env.VITE_GOOGLE_MAP_ID;
 // 依序嘗試的 model 清單：每個 model 在 Google 那邊是各自獨立的免費額度，
 // 前面的 model 額度用完（或暫時出錯）就自動換下一個，盡量把整體可用額度疊加起來。
 // gemma 系列跟 Gemini 系列的免費配額是分開算的，所以放在清單最後面當保底。

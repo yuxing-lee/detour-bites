@@ -5,14 +5,14 @@ import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistanc
 import { applyCheckboxFilters } from './results.js';
 import { isEaten, eatenRating, wireEatenWidget, weightedRandomPick } from './eatenList.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
-import { panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
+import { panForInfoWindow, openPlaceInfoWindow, createPlaceMarker, removeMarker } from './googleMaps.js';
 
 let discoverMarker = null;
 let lastDiscoverPickId = null;
 
 function clearDiscoverMarker() {
   if (discoverMarker) {
-    discoverMarker.setMap(null);
+    removeMarker(discoverMarker);
     discoverMarker = null;
   }
 }
@@ -73,20 +73,7 @@ function renderDiscoverResult(p) {
   wirePhotoGalleryAction(discoverResultEl, p);
 
   clearDiscoverMarker();
-  discoverMarker = new google.maps.Marker({
-    position: pos,
-    map: mapState.map,
-    title: name,
-    icon: {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 9,
-      fillColor: '#6fbf8b',
-      fillOpacity: 1,
-      strokeColor: '#12172b',
-      strokeWeight: 2
-    },
-    zIndex: 999
-  });
+  discoverMarker = createPlaceMarker({ position: pos, title: name, variant: 'discover', map: mapState.map });
   panForInfoWindow(pos, 16);
   openPlaceInfoWindow(p, pos, discoverMarker, discoverResultEl);
 }

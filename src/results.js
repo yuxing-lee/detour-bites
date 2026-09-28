@@ -4,7 +4,7 @@ import { targetCountInput, openNowOnlyEl, sameSideOnlyEl, sortSelectEl, resultCo
 import { mapState, searchState } from './state.js';
 import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml } from './utils.js';
 import { reviewSnippet } from './reviews.js';
-import { clearPlaceMarkers, markerIcon, markerLabel, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
+import { clearPlaceMarkers, createPlaceMarker, onMarkerClick, onMarkerHover, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
 import { wireEatenWidget } from './eatenList.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 
@@ -62,13 +62,7 @@ export function renderResults(places) {
     const name = p.displayName?.text || '(未命名)';
     const address = p.formattedAddress || '';
 
-    const marker = new google.maps.Marker({
-      position: pos,
-      title: name,
-      icon: markerIcon(false),
-      label: markerLabel(i),
-      zIndex: 10
-    });
+    const marker = createPlaceMarker({ position: pos, title: name, index: i });
     mapState.placeMarkers.push(marker);
 
     const card = document.createElement('div');
@@ -124,9 +118,8 @@ export function renderResults(places) {
     // 清單卡片 ↔ 地圖標記雙向連動：滑過任一邊，另一邊會一起亮起來
     card.addEventListener('mouseenter', () => setPlaceHighlighted(i, true));
     card.addEventListener('mouseleave', () => setPlaceHighlighted(i, false));
-    marker.addListener('mouseover', () => setPlaceHighlighted(i, true));
-    marker.addListener('mouseout', () => setPlaceHighlighted(i, false));
-    marker.addListener('click', () => {
+    onMarkerHover(marker, () => setPlaceHighlighted(i, true), () => setPlaceHighlighted(i, false));
+    onMarkerClick(marker, () => {
       panForInfoWindow(pos, PLACE_INFO_ZOOM);
       openPlaceInfoWindow(p, pos, marker, card);
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

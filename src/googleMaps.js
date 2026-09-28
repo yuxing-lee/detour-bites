@@ -1,4 +1,4 @@
-import { GOOGLE_MAPS_API_KEY, GEMINI_API_KEY } from './config.js';
+import { GOOGLE_MAPS_API_KEY, GEMINI_API_KEY, GOOGLE_MAP_ID } from './config.js';
 import {
   mapHintEl,
   appEl,
@@ -10,6 +10,10 @@ import {
 } from './dom.js';
 import { mapState, searchState } from './state.js';
 import { escapeHtml, debounce, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance } from './utils.js';
+
+// Advanced Markers 一定要搭配 Map ID 才能用；沒設定 Map ID 時整套退回舊版 Marker，
+// 讓 secret 還沒設好的環境也能正常運作
+export const useAdvancedMarkers = !!GOOGLE_MAP_ID;
 
 let sdkLoaded = false;
 let sdkLoadPromise = null;
@@ -24,7 +28,7 @@ export function loadGoogleMapsSDK() {
       resolve();
     };
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry,places&callback=__gmapsInit`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry,places,marker&callback=__gmapsInit`;
     script.onerror = () => {
       sdkLoadPromise = null;
       reject(new Error('Google Maps SDK 載入失敗，請確認 API key 是否正確、且已啟用 Maps JavaScript API / Directions API'));
@@ -147,10 +151,19 @@ setupAutocomplete(destinationInput, destinationSuggestionsEl);
 
 export function initMapIfNeeded() {
   if (mapState.map) return;
-  mapState.map = new google.maps.Map(document.getElementById('map'), {
+  const baseOptions = {
     center: { lat: 25.0478, lng: 121.5171 },
     zoom: 8,
-    disableDefaultUI: false,
+    disableDefaultUI: false
+  };
+  // 設了 mapId 之後 Google 會忽略 styles，配色改由 Cloud Console 的地圖樣式決定；
+  // 還沒在後台設定樣式時，先用內建深色主題，至少不會跟全站深色 UI 衝突
+  mapState.map = new google.maps.Map(document.getElementById('map'), useAdvancedMarkers ? {
+    ...baseOptions,
+    mapId: GOOGLE_MAP_ID,
+    colorScheme: google.maps.ColorScheme?.DARK ?? 'DARK'
+  } : {
+    ...baseOptions,
     styles: [
       { elementType: 'geometry', stylers: [{ color: '#1b2140' }] },
       { elementType: 'labels.text.fill', stylers: [{ color: '#9aa3c7' }] },
@@ -215,7 +228,7 @@ export function clearPlaceMarkers() {
     mapState.placeMarkerCluster.clearMarkers();
     mapState.placeMarkerCluster = null;
   }
-  mapState.placeMarkers.forEach(m => m.setMap(null));
+  mapState.placeMarkers.forEach(removeMarker);
   mapState.placeMarkers = [];
   mapState.placeCards = [];
   if (activeInfoWindow) {
@@ -226,7 +239,7 @@ export function clearPlaceMarkers() {
 
 // 清單編號跟地圖標記共用同一套外觀邏輯：預設是帶數字的橘色小圓點，
 // 滑鼠移到清單卡片或地圖標記其中一邊時，兩邊會一起放大變色，讓使用者看得出兩者對應同一間店
-export function markerIcon(highlighted) {
+function markerIcon(highlighted) {
   return {
     path: google.maps.SymbolPath.CIRCLE,
     scale: highlighted ? 13 : 9,
@@ -237,14 +250,88 @@ export function markerIcon(highlighted) {
   };
 }
 
-export function markerLabel(index) {
+function markerLabel(index) {
   return { text: String(index + 1), color: '#12172b', fontSize: '11px', fontWeight: '700' };
+}
+
+// 新舊兩種 marker 的差異都收在下面這幾個函式裡，results.js / discover.js 不用管目前用哪一種。
+// variant: 'place'（搜尋結果，帶編號）或 'discover'（踩新點推薦，綠色）
+export function createPlaceMarker({ position, title, index, variant = 'place', map = null }) {
+  if (useAdvancedMarkers) {
+    const pin = document.createElement('div');
+    pin.className = `map-pin map-pin-${variant}`;
+    if (variant === 'place') pin.textContent = String(index + 1);
+    return new google.maps.marker.AdvancedMarkerElement({
+      position,
+      map,
+      title,
+      content: pin,
+      gmpClickable: true,
+      zIndex: variant === 'discover' ? 999 : 10
+    });
+  }
+  if (variant === 'discover') {
+    return new google.maps.Marker({
+      position,
+      map,
+      title,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 9,
+        fillColor: '#6fbf8b',
+        fillOpacity: 1,
+        strokeColor: '#12172b',
+        strokeWeight: 2
+      },
+      zIndex: 999
+    });
+  }
+  return new google.maps.Marker({
+    position,
+    map,
+    title,
+    icon: markerIcon(false),
+    label: markerLabel(index),
+    zIndex: 10
+  });
+}
+
+// Advanced Marker 的點擊事件是 gmp-click；滑鼠移入移出則沒有 marker 層級的事件，
+// 要掛在自訂的 content 元素上
+export function onMarkerClick(marker, handler) {
+  if (useAdvancedMarkers) marker.addEventListener('gmp-click', handler);
+  else marker.addListener('click', handler);
+}
+
+export function onMarkerHover(marker, onEnter, onLeave) {
+  if (useAdvancedMarkers) {
+    marker.content.addEventListener('mouseenter', onEnter);
+    marker.content.addEventListener('mouseleave', onLeave);
+  } else {
+    marker.addListener('mouseover', onEnter);
+    marker.addListener('mouseout', onLeave);
+  }
+}
+
+export function removeMarker(marker) {
+  if (useAdvancedMarkers) marker.map = null;
+  else marker.setMap(null);
+}
+
+function setMarkerHighlighted(marker, isOn) {
+  if (useAdvancedMarkers) {
+    marker.content.classList.toggle('highlighted', isOn);
+    // 放大的那顆要浮到其他 marker 上面，不然會被旁邊的店蓋住
+    marker.zIndex = isOn ? 100 : 10;
+  } else {
+    marker.setIcon(markerIcon(isOn));
+  }
 }
 
 export function setPlaceHighlighted(index, isOn) {
   const marker = mapState.placeMarkers[index];
   const card = mapState.placeCards[index];
-  if (marker) marker.setIcon(markerIcon(isOn));
+  if (marker) setMarkerHighlighted(marker, isOn);
   if (card) card.classList.toggle('highlighted', isOn);
 }
 
@@ -314,5 +401,5 @@ export function openPlaceInfoWindow(p, pos, anchor, card) {
       });
     });
   }
-  activeInfoWindow.open(mapState.map, anchor);
+  activeInfoWindow.open({ map: mapState.map, anchor });
 }
