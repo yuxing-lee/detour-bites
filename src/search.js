@@ -1,11 +1,11 @@
 import {
   GOOGLE_MAPS_API_KEY,
   GEMINI_API_KEY,
-  MIN_SAMPLE_INTERVAL_KM,
   MAX_SAMPLE_POINTS,
   MAX_REVIEW_CANDIDATES,
   OPPOSITE_SIDE_TOLERANCE_M,
   BEHIND_START_TOLERANCE_M,
+  MAX_ROUTE_DEVIATION_M,
   PLACES_CONCURRENCY,
   SEARCH_STORAGE_KEY
 } from './config.js';
@@ -193,9 +193,12 @@ async function searchAlongRoute(routeIndex) {
     if (hasRoute) {
       const path = searchState.allRoutes[routeIndex].overview_path;
       const routeKm = google.maps.geometry.spherical.computeLength(path) / 1000;
-      // 間距至少 routeKm / (MAX_SAMPLE_POINTS - 2)：中間最多 MAX_SAMPLE_POINTS - 2 個點，
-      // 加上起點、終點，總數不會超過 MAX_SAMPLE_POINTS
-      const intervalKm = Math.max(MIN_SAMPLE_INTERVAL_KM, routeKm / (MAX_SAMPLE_POINTS - 2));
+      // 間距下限：相鄰兩個取樣圈（半徑都是 radius）間距不超過兩倍半徑，整條路線才不會有查不到店的空隙，
+      // 短路線也不會因為間距固定太大而退化成只取起點、終點兩個點。
+      // 間距上限：routeKm / (MAX_SAMPLE_POINTS - 2)，中間最多 MAX_SAMPLE_POINTS - 2 個點，
+      // 加上起點、終點，總數不會超過 MAX_SAMPLE_POINTS（長路線用這個上限控制查詢次數）
+      const noGapIntervalKm = (2 * radius) / 1000;
+      const intervalKm = Math.max(noGapIntervalKm, routeKm / (MAX_SAMPLE_POINTS - 2));
       samplePoints = samplePointsAlongPath(path, intervalKm);
     }
 
@@ -230,8 +233,11 @@ async function searchAlongRoute(routeIndex) {
         p._oppositeSide = proj.side < -OPPOSITE_SIDE_TOLERANCE_M;
         p._behindStart = proj.behindStart > BEHIND_START_TOLERANCE_M;
       });
-      // 起點取樣圈也會搜到背後（已經開過頭）的店，順路搜尋不需要；在查評論前先排除，也省 API
-      searchState.lastResults = searchState.lastResults.filter(p => !p._behindStart);
+      // 起點取樣圈也會搜到背後（已經開過頭）的店，順路搜尋不需要；在查評論前先排除，也省 API。
+      // 同時把「垂直於路線的距離」也納入篩選（上限見 MAX_ROUTE_DEVIATION_M）：
+      // 只算排序的話，離路線再遠的店只要同側、沒開過頭一樣會被列進「順路」清單，實際上要多繞一段
+      // 來回才到得了，結果會跟純粹的「附近吃什麼」幾乎沒有差別
+      searchState.lastResults = searchState.lastResults.filter(p => !p._behindStart && p._routeDistance <= MAX_ROUTE_DEVIATION_M);
     } else {
       // 沒有路線可比對，改成算「離起點多遠」，_routeProgress 全部一樣，排序就單純依距離
       searchState.lastResults.forEach(p => {

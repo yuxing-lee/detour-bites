@@ -7,9 +7,9 @@ export const GOOGLE_MAP_ID = import.meta.env.VITE_GOOGLE_MAP_ID;
 // gemma 系列跟 Gemini 系列的免費配額是分開算的，所以放在清單最後面當保底。
 export const GEMINI_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemma-3-27b-it'];
 // 沿路取樣：Places 搜尋是按「次數」計費（跟半徑大小無關），取樣點越多越耗免費額度。
-// 短路線用至少 MIN_SAMPLE_INTERVAL_KM 的間距讓涵蓋率夠密，長路線則把間距拉大，
-// 確保一次順路搜尋最多只打 MAX_SAMPLE_POINTS 次
-export const MIN_SAMPLE_INTERVAL_KM = 3;
+// 取樣間距上限用 MAX_SAMPLE_POINTS 控制，長路線間距拉大、確保一次順路搜尋最多只打這麼多次；
+// 間距下限則在 search.js 依搜尋半徑動態算（相鄰取樣圈間距不超過兩倍半徑），
+// 短路線也不會退化成只取起點終點兩個點、中間漏了一段沒搜到
 export const MAX_SAMPLE_POINTS = 12;
 // 填了「評論要提到的餐點」時，最多對幾間候選店家查評論（每間一次 Place Details 計費）
 export const MAX_REVIEW_CANDIDATES = 20;
@@ -34,6 +34,10 @@ export const FLYOVER_MAX_MS = 30000;
 export const OPPOSITE_SIDE_TOLERANCE_M = 20;
 // 投影落在起點後方超過這個距離的店視為「已經開過頭」，順路搜尋直接排除
 export const BEHIND_START_TOLERANCE_M = 30;
+// 店家離路線的垂直距離超過這個值，就代表要多繞這個距離的來回（去程+回程）才到得了，
+// 不算「順路」，直接濾掉。故意設得比搜尋半徑小：搜尋半徑是查詢範圍，這個是繞路容忍度，
+// 兩者概念不同，用同一個值使用者調大搜尋範圍時會連帶讓「順路」的定義變鬆
+export const MAX_ROUTE_DEVIATION_M = 600;
 
 export const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
 export const EATEN_STORAGE_KEY = 'detour-bites:eatenPlaces';
