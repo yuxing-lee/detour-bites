@@ -2,7 +2,7 @@ import { MarkerClusterer, SuperClusterAlgorithm } from '@googlemaps/markercluste
 import { PRICE_RANK, GEMINI_API_KEY, PLACE_INFO_ZOOM, CLUSTER_MAX_ZOOM } from './config.js';
 import { targetCountInput, openNowOnlyEl, sameSideOnlyEl, sortSelectEl, resultCountEl, resultListEl } from './dom.js';
 import { mapState, searchState } from './state.js';
-import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml } from './utils.js';
+import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml, foodEmoji } from './utils.js';
 import { reviewSnippet } from './reviews.js';
 import { clearPlaceMarkers, createPlaceMarker, onMarkerClick, onMarkerHover, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
 import { wireEatenWidget } from './eatenList.js';
@@ -62,7 +62,7 @@ export function renderResults(places) {
     const name = p.displayName?.text || '(未命名)';
     const address = p.formattedAddress || '';
 
-    const marker = createPlaceMarker({ position: pos, title: name, index: i });
+    const marker = createPlaceMarker({ position: pos, title: name, index: i, emoji: foodEmoji(p.primaryType) });
     mapState.placeMarkers.push(marker);
 
     const card = document.createElement('div');

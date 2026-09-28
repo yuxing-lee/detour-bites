@@ -1,4 +1,4 @@
-import { PRICE_LABELS, RESERVATION_PLATFORM_DOMAINS, GOOGLE_MAPS_API_KEY } from './config.js';
+import { PRICE_LABELS, RESERVATION_PLATFORM_DOMAINS, GOOGLE_MAPS_API_KEY, FOOD_EMOJI_BY_TYPE_WORD, FOOD_EMOJI_DEFAULT } from './config.js';
 
 export function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (ch) => ({
@@ -104,4 +104,11 @@ export function formatRouteDistance(meters, destination) {
   return meters >= 1000
     ? `${label} ${(meters / 1000).toFixed(1)} 公里`
     : `${label} ${Math.round(meters)} 公尺`;
+}
+
+export function foodEmoji(primaryType) {
+  for (const word of String(primaryType || '').split('_')) {
+    if (Object.hasOwn(FOOD_EMOJI_BY_TYPE_WORD, word)) return FOOD_EMOJI_BY_TYPE_WORD[word];
+  }
+  return FOOD_EMOJI_DEFAULT;
 }

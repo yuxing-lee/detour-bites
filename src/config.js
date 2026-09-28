@@ -46,7 +46,10 @@ export const PLACE_FIELD_MASK = [
   'places.priceLevel',
   'places.priceRange',
   'places.currentOpeningHours.openNow',
-  'places.websiteUri'
+  'places.websiteUri',
+  // 地圖標記依店家類型顯示美食圖示用；上面的 rating / currentOpeningHours 已經是最高計費級距，
+  // 多這個欄位不會讓 Text Search / Nearby Search 的計費再往上跳
+  'places.primaryType'
 ].join(',');
 
 export const PRICE_LABELS = {
@@ -102,6 +105,20 @@ export const KEYWORD_FILTER_PATTERNS = [
   { re: /(現在|目前)?(營業中|還在營業|有開著|還有開|有開|開著)/g, flag: 'openNow' },
   { re: /(便宜|划算|平價|俗又大碗|俗擱大碗|cp值高)/gi, flag: 'preferCheap' }
 ];
+
+// 地圖標記的美食圖示：primaryType（例如 ramen_restaurant、wine_bar）拆成單字後，
+// 從左到右第一個對得上的字決定圖示，所以 wine_bar 會是 🍷 而不是 🍺、steak_house 不會誤判成 tea。
+// 對不到的（一般 restaurant、food 等）用 FOOD_EMOJI_DEFAULT
+export const FOOD_EMOJI_BY_TYPE_WORD = {
+  ramen: '🍜', noodle: '🍜', sushi: '🍣', japanese: '🍱', korean: '🍲', chinese: '🥢', taiwanese: '🥢',
+  thai: '🍛', indian: '🍛', vietnamese: '🍜', italian: '🍝', pizza: '🍕', mexican: '🌮', french: '🥖',
+  hamburger: '🍔', burger: '🍔', fast: '🍟', sandwich: '🥪', chicken: '🍗', dumpling: '🥟',
+  steak: '🥩', barbecue: '🍖', seafood: '🦐', pot: '🍲', vegan: '🥗', vegetarian: '🥗',
+  breakfast: '🍳', brunch: '🥞', bakery: '🥐', bagel: '🥯', donut: '🍩', dessert: '🍰',
+  cake: '🍰', confectionery: '🍬', chocolate: '🍫', ice: '🍦', cream: '🍦', juice: '🧃',
+  cafe: '☕', coffee: '☕', tea: '🧋', wine: '🍷', bar: '🍺', pub: '🍺'
+};
+export const FOOD_EMOJI_DEFAULT = '🍽️';
 
 export const EATEN_GOOD_RATING_THRESHOLD = 4;
 // 勾選「包含吃過的高評價餐廳」時，固定有這個比例的機率會從舊愛裡抽，其餘機率抽新店，

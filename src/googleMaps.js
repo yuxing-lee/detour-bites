@@ -256,11 +256,25 @@ function markerLabel(index) {
 
 // 新舊兩種 marker 的差異都收在下面這幾個函式裡，results.js / discover.js 不用管目前用哪一種。
 // variant: 'place'（搜尋結果，帶編號）或 'discover'（踩新點推薦，綠色）
-export function createPlaceMarker({ position, title, index, variant = 'place', map = null }) {
+// emoji 只有 Advanced Marker 會用到：圓點中間放美食圖示，編號改成右上角的小角標
+export function createPlaceMarker({ position, title, index, emoji, variant = 'place', map = null }) {
   if (useAdvancedMarkers) {
     const pin = document.createElement('div');
-    pin.className = `map-pin map-pin-${variant}`;
-    if (variant === 'place') pin.textContent = String(index + 1);
+    pin.className = `map-pin map-pin-${variant} map-pin-enter`;
+    // 跟清單卡片一樣依序冒出來；動畫播完就拿掉 class，不然 clusterer 拆開/收合時
+    // marker 重新掛回 DOM 會每次都重播一次（還帶著延遲）
+    pin.style.animationDelay = `${Math.min(index ?? 0, 12) * 40}ms`;
+    pin.addEventListener('animationend', () => pin.classList.remove('map-pin-enter'), { once: true });
+    const emojiEl = document.createElement('span');
+    emojiEl.className = 'map-pin-emoji';
+    emojiEl.textContent = variant === 'discover' ? '🎯' : (emoji || '');
+    pin.appendChild(emojiEl);
+    if (variant === 'place') {
+      const badge = document.createElement('span');
+      badge.className = 'map-pin-index';
+      badge.textContent = String(index + 1);
+      pin.appendChild(badge);
+    }
     return new google.maps.marker.AdvancedMarkerElement({
       position,
       map,
