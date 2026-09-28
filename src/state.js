@@ -7,7 +7,9 @@ export const mapState = {
   placeMarkers: [],
   placeMarkerCluster: null,
   placeCards: [],
-  placeData: [] // 目前清單/地圖上顯示的店家，跟 placeMarkers、placeCards 同順序
+  placeData: [], // 目前清單/地圖上顯示的店家，跟 placeMarkers、placeCards 同順序
+  // 集章地圖開著時由 stampMap.js 設定：手機版切回地圖頁籤時改用它重新對焦印章，而不是對焦搜尋路線
+  refitStampView: null
 };
 
 // 搜尋/路線相關的共用可變狀態：由 search.js 的 runSearch/searchAlongRoute 寫入，

@@ -36,6 +36,10 @@ export function playRouteReveal(route) {
   start(route, places);
 }
 
+export function discardPendingRouteReveal() {
+  pending = null;
+}
+
 // 切到手機版地圖頁籤時呼叫；只有標記還是同一批（中間沒有重新搜尋/篩選）才補播
 export function resumePendingRouteReveal() {
   if (!pending) return;

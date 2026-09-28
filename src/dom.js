@@ -34,3 +34,7 @@ export const eatenListEl = document.getElementById('eatenListEl');
 export const eatenModalStatusEl = document.getElementById('eatenModalStatus');
 export const exportEatenBtn = document.getElementById('exportEatenBtn');
 export const importEatenInput = document.getElementById('importEatenInput');
+export const openStampMapBtn = document.getElementById('openStampMapBtn');
+export const stampMapBarEl = document.getElementById('stampMapBar');
+export const stampMapSummaryEl = document.getElementById('stampMapSummary');
+export const closeStampMapBtn = document.getElementById('closeStampMapBtn');

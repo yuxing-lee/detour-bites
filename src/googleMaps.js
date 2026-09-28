@@ -197,6 +197,10 @@ export function setMobileView(view) {
   // 所以切回地圖頁籤時不能只靠 resize，要用已知的路線邊界／起點座標重新套用一次，
   // 不然畫面可能整片灰掉，或停在容器還是 0 大小時算出來的錯誤縮放層級
   google.maps.event.trigger(mapState.map, 'resize');
+  if (mapState.refitStampView) {
+    mapState.refitStampView();
+    return;
+  }
   if (searchState.allRoutes.length && searchState.allRoutes[searchState.selectedRouteIndex]) {
     mapState.map.fitBounds(searchState.allRoutes[searchState.selectedRouteIndex].bounds);
   } else if (searchState.lastOriginLocation) {
@@ -259,9 +263,11 @@ function markerLabel(index) {
 }
 
 // 新舊兩種 marker 的差異都收在下面這幾個函式裡，results.js / discover.js 不用管目前用哪一種。
-// variant: 'place'（搜尋結果，帶編號）或 'discover'（踩新點推薦，綠色）
-// emoji 只有 Advanced Marker 會用到：圓點中間放美食圖示，編號改成右上角的小角標
-export function createPlaceMarker({ position, title, index, emoji, variant = 'place', map = null }) {
+// variant: 'place'（搜尋結果，帶編號）、'discover'（踩新點推薦，綠色）或 'stamp'（集章地圖的印章）
+// emoji / eaten 只有 Advanced Marker 會用到：圓點中間放美食圖示，編號改成右上角的小角標，
+// 吃過的店左下角多蓋一個「吃」字小印章；rating 是集章印章上顯示的星數
+export function createPlaceMarker({ position, title, index, emoji, eaten = false, rating = 0, variant = 'place', map = null }) {
+  if (variant === 'stamp') return createStampMarker({ position, title, index, rating, map });
   if (useAdvancedMarkers) {
     const pin = document.createElement('div');
     pin.className = `map-pin map-pin-${variant} map-pin-enter`;
@@ -278,6 +284,7 @@ export function createPlaceMarker({ position, title, index, emoji, variant = 'pl
       badge.className = 'map-pin-index';
       badge.textContent = String(index + 1);
       pin.appendChild(badge);
+      if (eaten) pin.appendChild(createEatenBadge());
     }
     return new google.maps.marker.AdvancedMarkerElement({
       position,
@@ -311,6 +318,50 @@ export function createPlaceMarker({ position, title, index, emoji, variant = 'pl
     icon: markerIcon(false),
     label: markerLabel(index),
     zIndex: 10
+  });
+}
+
+function createEatenBadge() {
+  const stamp = document.createElement('span');
+  stamp.className = 'map-pin-stamp';
+  stamp.textContent = '吃';
+  return stamp;
+}
+
+// 在搜尋結果卡片上標記/取消「吃過」時，同步更新地圖上那顆標記的小印章（舊版 Marker 沒有這個裝飾）
+export function setMarkerEaten(marker, isOn) {
+  if (!useAdvancedMarkers || !marker) return;
+  const existing = marker.content.querySelector('.map-pin-stamp');
+  if (isOn && !existing) marker.content.appendChild(createEatenBadge());
+  if (!isOn && existing) existing.remove();
+}
+
+// 集章地圖的印章：紅色（4★ 以上是金色）圓形章、中間一個斜斜的「吃」字，有評分的話下方掛星數。
+// index 用來錯開蓋章動畫的時間
+function createStampMarker({ position, title, index = 0, rating = 0, map }) {
+  const gold = rating >= 4;
+  if (useAdvancedMarkers) {
+    const stamp = document.createElement('div');
+    stamp.className = 'map-stamp map-stamp-enter' + (gold ? ' map-stamp-gold' : '');
+    stamp.style.animationDelay = `${Math.min(index, 30) * 70}ms`;
+    stamp.addEventListener('animationend', () => stamp.classList.remove('map-stamp-enter'), { once: true });
+    stamp.innerHTML = `<span class="map-stamp-text">吃</span>${rating ? `<span class="map-stamp-rating">${rating}★</span>` : ''}`;
+    return new google.maps.marker.AdvancedMarkerElement({ position, map, title, content: stamp, gmpClickable: true, zIndex: 20 });
+  }
+  return new google.maps.Marker({
+    position,
+    map,
+    title,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 11,
+      fillColor: '#f3f1ea',
+      fillOpacity: 1,
+      strokeColor: gold ? '#e0a526' : '#d9453b',
+      strokeWeight: 3
+    },
+    label: { text: '吃', color: gold ? '#b8841a' : '#d9453b', fontSize: '12px', fontWeight: '700' },
+    zIndex: 20
   });
 }
 
@@ -395,6 +446,21 @@ export function panForInfoWindow(pos, zoom) {
   mapState.map.panTo(pos);
   if (typeof zoom === 'number') mapState.map.setZoom(zoom);
   mapState.map.panBy(0, -110);
+}
+
+// 集章地圖這類不是搜尋結果的標記用：直接給 HTML 內容，跟搜尋結果共用同一個 InfoWindow，
+// 一次只會開著一個
+export function openSimpleInfoWindow(html, anchor) {
+  if (activeInfoWindow) activeInfoWindow.close();
+  activeInfoWindow = new google.maps.InfoWindow({ content: html });
+  activeInfoWindow.open({ map: mapState.map, anchor });
+}
+
+export function closeActiveInfoWindow() {
+  if (activeInfoWindow) {
+    activeInfoWindow.close();
+    activeInfoWindow = null;
+  }
 }
 
 // 開啟前先收掉前一個開著的 InfoWindow，避免在地圖上切換餐廳時舊的視窗還留著。

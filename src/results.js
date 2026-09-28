@@ -4,8 +4,9 @@ import { targetCountInput, openNowOnlyEl, sameSideOnlyEl, sortSelectEl, resultCo
 import { mapState, searchState } from './state.js';
 import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistance, oppositeSideBadgeHtml, foodEmoji } from './utils.js';
 import { reviewSnippet } from './reviews.js';
-import { clearPlaceMarkers, createPlaceMarker, onMarkerClick, onMarkerHover, setPlaceHighlighted, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
-import { wireEatenWidget } from './eatenList.js';
+import { clearPlaceMarkers, createPlaceMarker, onMarkerClick, onMarkerHover, setPlaceHighlighted, setMarkerEaten, panForInfoWindow, openPlaceInfoWindow } from './googleMaps.js';
+import { wireEatenWidget, isEaten } from './eatenList.js';
+import { exitStampMap } from './stampMap.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
 
 // 結果清單跟「踩新點」共用的勾選篩選條件
@@ -55,6 +56,9 @@ targetCountInput.addEventListener('change', applyFiltersAndRender);
 export function renderResults(places) {
   resultCountEl.textContent = `找到 ${places.length} 間餐廳`;
   resultListEl.innerHTML = '';
+  // 集章地圖開著的時候有新結果要顯示（重新搜尋、改篩選），先結束集章地圖，
+  // 視角交給這次的搜尋結果，不用還原
+  exitStampMap({ restoreView: false });
   clearPlaceMarkers();
   mapState.placeData = places;
 
@@ -63,7 +67,7 @@ export function renderResults(places) {
     const name = p.displayName?.text || '(未命名)';
     const address = p.formattedAddress || '';
 
-    const marker = createPlaceMarker({ position: pos, title: name, index: i, emoji: foodEmoji(p.primaryType) });
+    const marker = createPlaceMarker({ position: pos, title: name, index: i, emoji: foodEmoji(p.primaryType), eaten: isEaten(p.id) });
     mapState.placeMarkers.push(marker);
 
     const card = document.createElement('div');
@@ -126,7 +130,7 @@ export function renderResults(places) {
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
-    wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name);
+    wireEatenWidget(card.querySelector('.eaten-widget-slot'), p.id, name, () => setMarkerEaten(marker, isEaten(p.id)), pos);
 
     wireReviewAndAiActions(card, p, name);
     wirePhotoGalleryAction(card, p);

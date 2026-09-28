@@ -5,7 +5,7 @@ import { escapeHtml, priceText, websiteLinkHtml, buildNavUrl, formatRouteDistanc
 import { applyCheckboxFilters } from './results.js';
 import { isEaten, eatenRating, wireEatenWidget, weightedRandomPick } from './eatenList.js';
 import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.js';
-import { panForInfoWindow, openPlaceInfoWindow, createPlaceMarker, removeMarker } from './googleMaps.js';
+import { panForInfoWindow, openPlaceInfoWindow, createPlaceMarker, removeMarker, setMarkerEaten } from './googleMaps.js';
 
 let discoverMarker = null;
 let lastDiscoverPickId = null;
@@ -68,7 +68,12 @@ function renderDiscoverResult(p) {
     </div>
   `;
 
-  wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name);
+  // 推薦的店也在搜尋結果清單裡，這裡標記吃過時順便更新結果清單那顆地圖標記的小印章
+  const syncResultMarker = () => {
+    const idx = mapState.placeData.findIndex(item => item.id === p.id);
+    if (idx >= 0) setMarkerEaten(mapState.placeMarkers[idx], isEaten(p.id));
+  };
+  wireEatenWidget(discoverResultEl.querySelector('.eaten-widget-slot'), p.id, name, syncResultMarker, pos);
   wireReviewAndAiActions(discoverResultEl, p, name);
   wirePhotoGalleryAction(discoverResultEl, p);
 

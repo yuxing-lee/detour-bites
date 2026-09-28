@@ -477,6 +477,7 @@
 
   .modal-toolbar {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 12px 18px;
     border-bottom: 1px solid var(--panel-line);
@@ -728,6 +729,122 @@
 
   .route-car-east { transform: scaleX(-1); }
   .route-car-leave { opacity: 0; }
+
+  /* 搜尋結果裡吃過的店：美食泡泡左下角蓋一個紅色「吃」字小印章 */
+  .map-pin-stamp {
+    position: absolute;
+    left: -8px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid #d9453b;
+    background: #f3f1ea;
+    color: #d9453b;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+    transform: rotate(-14deg);
+  }
+
+  /* 集章地圖的印章：米白紙底＋紅色（4★ 以上金色）雙圈章，中間一個斜斜的「吃」字 */
+  .map-stamp {
+    --stamp-ink: #d9453b;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-bottom: 4px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 3px double var(--stamp-ink);
+    background: rgba(243, 241, 234, 0.95);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    transform: rotate(-12deg);
+  }
+
+  .map-stamp-gold { --stamp-ink: #e0a526; }
+
+  .map-stamp-text {
+    color: var(--stamp-ink);
+    font-size: 17px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .map-stamp-rating {
+    position: absolute;
+    bottom: -9px;
+    left: 50%;
+    transform: translateX(-50%) rotate(12deg);
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--stamp-ink);
+    color: #12172b;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 14px;
+    white-space: nowrap;
+  }
+
+  /* 蓋章動畫：從大、淡、正的狀態「碰」一下壓到地圖上 */
+  .map-stamp-enter { animation: stampDown 0.35s cubic-bezier(0.3, 1.4, 0.6, 1) both; }
+
+  @keyframes stampDown {
+    0% { opacity: 0; transform: scale(2.2) rotate(0deg); }
+    70% { opacity: 1; transform: scale(0.92) rotate(-12deg); }
+    100% { opacity: 1; transform: scale(1) rotate(-12deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-stamp-enter { animation: none; }
+  }
+
+  /* 左右各留 12px 再用 fit-content + auto margin 置中：不用 left:50% + translateX，
+     不然絕對定位的寬度只剩容器的一半，手機上文字會擠成一直條 */
+  .stamp-map-bar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: fit-content;
+    margin: 0 auto;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--amber-dim);
+    background: rgba(15, 20, 40, 0.92);
+    color: var(--paper);
+    font-size: 13px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    animation: fadeIn 0.25s ease;
+  }
+
+  .stamp-map-summary { line-height: 1.4; }
+
+  /* 全站 button 預設是滿版寬＋上方留白，這顆要縮回內容寬度 */
+  .stamp-map-close {
+    flex-shrink: 0;
+    width: auto;
+    margin: 0;
+    border: 1px solid var(--amber);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+
+  .stamp-map-close:hover { background: rgba(242, 163, 64, 0.12); transform: none; }
 
   .place-card .meta {
     font-size: 12px;

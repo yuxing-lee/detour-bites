@@ -9,13 +9,28 @@ import {
   importEatenInput
 } from './dom.js';
 
-// 「吃過」清單存 { name, rating }：rating 是 1~5 顆星，0/undefined 代表吃過但還沒評分
+// 「吃過」清單存 { name, rating, lat, lng, eatenAt }：rating 是 1~5 顆星，0/undefined 代表吃過但還沒評分；
+// lat/lng 給集章地圖用（舊資料沒有，打開集章地圖時才補），eatenAt 是第一次標記的時間
+function normalizeEntry(item) {
+  const entry = { name: typeof item.name === 'string' ? item.name : '', rating: item.rating || 0 };
+  if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
+    entry.lat = item.lat;
+    entry.lng = item.lng;
+  }
+  if (Number.isFinite(item.eatenAt)) entry.eatenAt = item.eatenAt;
+  return entry;
+}
+
+function serializeEatenPlaces() {
+  return Array.from(eatenPlaces, ([id, entry]) => ({ id, ...entry }));
+}
+
 function loadEatenPlaces() {
   try {
     const raw = localStorage.getItem(EATEN_STORAGE_KEY);
     if (!raw) return new Map();
     const arr = JSON.parse(raw);
-    return new Map(arr.map(item => [item.id, { name: item.name, rating: item.rating || 0 }]));
+    return new Map(arr.map(item => [item.id, normalizeEntry(item)]));
   } catch (err) {
     console.warn('讀取已吃過清單失敗：', err);
     return new Map();
@@ -24,9 +39,7 @@ function loadEatenPlaces() {
 
 function saveEatenPlaces() {
   try {
-    localStorage.setItem(EATEN_STORAGE_KEY, JSON.stringify(
-      Array.from(eatenPlaces, ([id, entry]) => ({ id, name: entry.name, rating: entry.rating }))
-    ));
+    localStorage.setItem(EATEN_STORAGE_KEY, JSON.stringify(serializeEatenPlaces()));
   } catch (err) {
     console.warn('儲存已吃過清單失敗：', err);
   }
@@ -42,10 +55,31 @@ export function eatenRating(id) {
   return eatenPlaces.get(id)?.rating || 0;
 }
 
-function setEatenRating(id, name, rating) {
-  eatenPlaces.set(id, { name, rating });
+// 改評分時保留原本的座標跟第一次標記時間；location 是選填的 { lat, lng }，有給就一併記下
+function setEatenRating(id, name, rating, location) {
+  const prev = eatenPlaces.get(id) || {};
+  const entry = { ...prev, name, rating };
+  if (location) {
+    entry.lat = location.lat;
+    entry.lng = location.lng;
+  }
+  if (!entry.eatenAt) entry.eatenAt = Date.now();
+  eatenPlaces.set(id, entry);
   saveEatenPlaces();
   updateManageEatenBtnLabel();
+}
+
+// 集章地圖用：列出全部吃過的店（含座標，沒有座標的 lat/lng 是 undefined）
+export function getEatenEntries() {
+  return serializeEatenPlaces();
+}
+
+export function setEatenLocation(id, location) {
+  const entry = eatenPlaces.get(id);
+  if (!entry || !location) return;
+  entry.lat = location.lat;
+  entry.lng = location.lng;
+  saveEatenPlaces();
 }
 
 function clearEaten(id) {
@@ -81,14 +115,15 @@ function eatenWidgetHTML(id) {
 }
 
 // 掛在 slotEl 底下渲染星星評分小工具並綁定事件；點星星＝標記已吃過＋設定評分，點 ✕＝取消標記
-// onChange 是選填的額外回呼，給需要在評分變動後重繪外層清單的呼叫端（例如管理清單）用
-export function wireEatenWidget(slotEl, id, name, onChange) {
+// onChange 是選填的額外回呼，給需要在評分變動後重繪外層清單的呼叫端（例如管理清單）用；
+// location 是選填的店家座標 { lat, lng }，標記吃過時一起存起來，集章地圖就不用再查
+export function wireEatenWidget(slotEl, id, name, onChange, location) {
   slotEl.innerHTML = eatenWidgetHTML(id);
   slotEl.querySelectorAll('.star-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      setEatenRating(id, name, parseInt(btn.dataset.value, 10));
-      wireEatenWidget(slotEl, id, name, onChange);
+      setEatenRating(id, name, parseInt(btn.dataset.value, 10), location);
+      wireEatenWidget(slotEl, id, name, onChange, location);
       if (onChange) onChange();
     });
   });
@@ -97,7 +132,7 @@ export function wireEatenWidget(slotEl, id, name, onChange) {
     clearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       clearEaten(id);
-      wireEatenWidget(slotEl, id, name, onChange);
+      wireEatenWidget(slotEl, id, name, onChange, location);
       if (onChange) onChange();
     });
   }
@@ -147,7 +182,7 @@ function openEatenModal() {
   eatenModalOverlayEl.hidden = false;
 }
 
-function closeEatenModal() {
+export function closeEatenModal() {
   eatenModalOverlayEl.hidden = true;
 }
 
@@ -161,7 +196,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 exportEatenBtn.addEventListener('click', () => {
-  const data = Array.from(eatenPlaces, ([id, entry]) => ({ id, name: entry.name, rating: entry.rating }));
+  const data = serializeEatenPlaces();
   if (!data.length) {
     setEatenModalStatus('目前沒有資料可以匯出', 'error');
     return;
@@ -190,7 +225,7 @@ importEatenInput.addEventListener('change', async (e) => {
     arr.forEach(item => {
       if (!item || typeof item.id !== 'string' || !item.id) return;
       const rating = Math.max(0, Math.min(5, Math.round(Number(item.rating)) || 0));
-      eatenPlaces.set(item.id, { name: typeof item.name === 'string' ? item.name : '', rating });
+      eatenPlaces.set(item.id, normalizeEntry({ ...item, rating }));
       imported++;
     });
 
