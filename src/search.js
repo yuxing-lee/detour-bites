@@ -1,7 +1,6 @@
 import {
   GOOGLE_MAPS_API_KEY,
   GEMINI_API_KEY,
-  MIN_SAMPLE_INTERVAL_KM,
   MAX_SAMPLE_POINTS,
   MAX_REVIEW_CANDIDATES,
   OPPOSITE_SIDE_TOLERANCE_M,
@@ -193,9 +192,12 @@ async function searchAlongRoute(routeIndex) {
     if (hasRoute) {
       const path = searchState.allRoutes[routeIndex].overview_path;
       const routeKm = google.maps.geometry.spherical.computeLength(path) / 1000;
-      // 間距至少 routeKm / (MAX_SAMPLE_POINTS - 2)：中間最多 MAX_SAMPLE_POINTS - 2 個點，
-      // 加上起點、終點，總數不會超過 MAX_SAMPLE_POINTS
-      const intervalKm = Math.max(MIN_SAMPLE_INTERVAL_KM, routeKm / (MAX_SAMPLE_POINTS - 2));
+      // 間距下限：相鄰兩個取樣圈（半徑都是 radius）間距不超過兩倍半徑，整條路線才不會有查不到店的空隙，
+      // 短路線也不會因為間距固定太大而退化成只取起點、終點兩個點。
+      // 間距上限：routeKm / (MAX_SAMPLE_POINTS - 2)，中間最多 MAX_SAMPLE_POINTS - 2 個點，
+      // 加上起點、終點，總數不會超過 MAX_SAMPLE_POINTS（長路線用這個上限控制查詢次數）
+      const noGapIntervalKm = (2 * radius) / 1000;
+      const intervalKm = Math.max(noGapIntervalKm, routeKm / (MAX_SAMPLE_POINTS - 2));
       samplePoints = samplePointsAlongPath(path, intervalKm);
     }
 
