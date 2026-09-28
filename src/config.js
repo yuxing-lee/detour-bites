@@ -34,6 +34,10 @@ export const FLYOVER_MAX_MS = 30000;
 export const OPPOSITE_SIDE_TOLERANCE_M = 20;
 // 投影落在起點後方超過這個距離的店視為「已經開過頭」，順路搜尋直接排除
 export const BEHIND_START_TOLERANCE_M = 30;
+// 店家離路線的垂直距離超過這個值，就代表要多繞這個距離的來回（去程+回程）才到得了，
+// 不算「順路」，直接濾掉。故意設得比搜尋半徑小：搜尋半徑是查詢範圍，這個是繞路容忍度，
+// 兩者概念不同，用同一個值使用者調大搜尋範圍時會連帶讓「順路」的定義變鬆
+export const MAX_ROUTE_DEVIATION_M = 600;
 
 export const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
 export const EATEN_STORAGE_KEY = 'detour-bites:eatenPlaces';
