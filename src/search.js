@@ -230,8 +230,11 @@ async function searchAlongRoute(routeIndex) {
         p._oppositeSide = proj.side < -OPPOSITE_SIDE_TOLERANCE_M;
         p._behindStart = proj.behindStart > BEHIND_START_TOLERANCE_M;
       });
-      // 起點取樣圈也會搜到背後（已經開過頭）的店，順路搜尋不需要；在查評論前先排除，也省 API
-      searchState.lastResults = searchState.lastResults.filter(p => !p._behindStart);
+      // 起點取樣圈也會搜到背後（已經開過頭）的店，順路搜尋不需要；在查評論前先排除，也省 API。
+      // 同時把「垂直於路線的距離」也納入篩選（沿用使用者設的搜尋半徑當作可接受的繞路距離）：
+      // 只算排序的話，離路線再遠的店只要同側、沒開過頭一樣會被列進「順路」清單，實際上要繞一大圈才到得了，
+      // 結果會跟純粹的「附近吃什麼」幾乎沒有差別
+      searchState.lastResults = searchState.lastResults.filter(p => !p._behindStart && p._routeDistance <= radius);
     } else {
       // 沒有路線可比對，改成算「離起點多遠」，_routeProgress 全部一樣，排序就單純依距離
       searchState.lastResults.forEach(p => {
