@@ -10,7 +10,8 @@ import {
   shopDoneSummaryEl,
   shopDoneListEl,
   shopClearDoneBtn,
-  shopModeCountEl
+  shopModeCountEl,
+  shopNearbyEl
 } from './dom.js';
 import { SHOP_CATEGORIES, STARTER_ITEMS } from './shopCatalog.js';
 import { CATEGORY_BY_ID, splitItems, resolveItem, needsAiClassification, itemKey, stripQuantity } from './shopMatch.js';
@@ -34,6 +35,7 @@ import {
 //   - 「常買」那排：買過的東西點一下就加回來
 //   - 網址帶 ?add=牛奶,雞蛋 也能加入，iPhone 捷徑／Siri 可以直接呼叫（見 README）
 //   - 不用自己選要去哪買：自動判斷類別，判斷錯了點一下改掉，之後同一樣東西都會記住
+//   - 清單一長就依「去哪裡買」分組、每組可以收合，在哪間店就只看那一組
 
 // 已買的品項保留一天，讓使用者還來得及反悔，之後自動清掉
 const DONE_KEEP_MS = 24 * 60 * 60 * 1000;
@@ -41,6 +43,8 @@ const HISTORY_LIMIT = 200;
 const AI_CACHE_LIMIT = 500;
 const QUICK_CHIP_COUNT = 10;
 const AI_BATCH_SIZE = 20;
+// 還沒買的有這麼多項以上、而且分得出兩組以上，才改成依類別分組顯示；幾樣東西攤開來看比較快
+const GROUP_MIN_ITEMS = 6;
 const DEFAULT_PLACEHOLDER = shopInputEl.placeholder;
 
 function loadJson(key, fallback) {
@@ -302,6 +306,13 @@ const scheduleAi = debounce(runAiClassification, 400);
 
 // 正在編輯類別的品項 id（一次只開一個）
 let editingId = null;
+// 編輯中還沒按「完成」的勾選。附近店家查完會整個清單重畫，勾選只留在畫面上的話會被洗掉
+let editingDraft = new Set();
+
+// 改了類別、分組時品項會換到別組：播一下進場動畫，那組收著的話也會打開
+function highlightIfMoved(item, groupBefore) {
+  if (groupOf(resolutionOf(item)).id !== groupBefore) justAddedIds = new Set([item.id]);
+}
 
 function saveCategories(id, selected) {
   const item = items.find(it => it.id === id);
@@ -316,7 +327,9 @@ function saveCategories(id, selected) {
     renderList();
     return;
   }
+  const groupBefore = groupOf(res).id;
   memory.learned[res.key] = cats;
+  highlightIfMoved(item, groupBefore);
   saveMemory();
   afterChange();
   const name = stripQuantity(item.text);
@@ -328,7 +341,10 @@ function saveCategories(id, selected) {
 function resetCategories(id) {
   const item = items.find(it => it.id === id);
   if (!item) return;
-  delete memory.learned[resolutionOf(item).key];
+  const res = resolutionOf(item);
+  const groupBefore = groupOf(res).id;
+  delete memory.learned[res.key];
+  highlightIfMoved(item, groupBefore);
   editingId = null;
   saveMemory();
   afterChange();
@@ -337,22 +353,28 @@ function resetCategories(id) {
 
 // ── 畫面 ──
 
-function categoryButtonHtml(item, res) {
+function isClassifying(res) {
+  return aiInFlight.has(res.key) || isAwaitingAi(res);
+}
+
+// compact：分組顯示時組名已經寫了去哪裡買，品項旁邊只留圖示（還是點得開來改）
+function categoryButtonHtml(item, res, { compact = false } = {}) {
   let label;
   let tag = '';
-  if (aiInFlight.has(res.key) || isAwaitingAi(res)) {
-    label = '✨ AI 判斷中…';
+  if (isClassifying(res)) {
+    label = compact ? '✨…' : '✨ AI 判斷中…';
   } else if (res.mode === 'chain') {
-    label = `🏷️ 只找${escapeHtml(res.chain.label)}`;
+    label = compact ? '🏷️' : `🏷️ 只找${escapeHtml(res.chain.label)}`;
   } else if (res.mode === 'name') {
-    label = '🔎 用品名找';
+    label = compact ? '🔎' : '🔎 用品名找';
   } else {
     const first = CATEGORY_BY_ID.get(res.cats[0]);
-    label = `${res.cats.slice(0, 3).map(c => CATEGORY_BY_ID.get(c).emoji).join('')} ${escapeHtml(first.label)}${res.cats.length > 1 ? ' 等' : ''}`;
+    const emojis = res.cats.slice(0, 3).map(c => CATEGORY_BY_ID.get(c).emoji).join('');
+    label = compact ? emojis : `${emojis} ${escapeHtml(first.label)}${res.cats.length > 1 ? ' 等' : ''}`;
     if (res.source === 'ai') tag = '<span class="shop-src">AI</span>';
     if (res.source === 'guess') tag = '<span class="shop-src">猜的</span>';
   }
-  return `<button type="button" class="shop-cat-btn" aria-label="修改「${escapeHtml(item.text)}」要去哪裡買" aria-expanded="${editingId === item.id}">${label}${tag}</button>`;
+  return `<button type="button" class="shop-cat-btn${compact ? ' compact' : ''}" aria-label="修改「${escapeHtml(item.text)}」要去哪裡買" title="修改要去哪裡買" aria-expanded="${editingId === item.id}">${label}${tag}</button>`;
 }
 
 function hintHtml(item) {
@@ -382,7 +404,7 @@ function hintHtml(item) {
 }
 
 function catEditorHtml(item, res) {
-  const selected = new Set(res.mode === 'name' ? [] : res.cats);
+  const selected = editingDraft;
   const learnedExists = Object.hasOwn(memory.learned, res.key);
   return `<div class="shop-cat-editor" data-for="${escapeHtml(item.id)}">`
     + `<div class="shop-cat-editor-title">「${escapeHtml(stripQuantity(item.text))}」可以去哪裡買？<span>改了會記住，下次自動套用</span></div>`
@@ -396,16 +418,114 @@ function catEditorHtml(item, res) {
     + '</div></div>';
 }
 
-function itemRowHtml(item) {
+// grouped：分組裡的精簡版，類別圖示移到右邊同一行，沒有附近店家的提示時一行就是一項
+function itemRowHtml(item, { grouped = false } = {}) {
   const res = resolutionOf(item);
   const isNew = justAddedIds.has(item.id);
-  const sub = item.done ? '' : `<div class="shop-item-sub">${categoryButtonHtml(item, res)}${hintHtml(item)}</div>`;
+  let sub = '';
+  let side = '';
+  if (!item.done && grouped) {
+    const hint = hintHtml(item);
+    if (hint) sub = `<div class="shop-item-sub">${hint}</div>`;
+    side = categoryButtonHtml(item, res, { compact: true });
+  } else if (!item.done) {
+    sub = `<div class="shop-item-sub">${categoryButtonHtml(item, res)}${hintHtml(item)}</div>`;
+  }
   return `<div class="shop-item${item.done ? ' done' : ''}${isNew ? ' shop-item-new' : ''}${editingId === item.id ? ' editing' : ''}" data-id="${escapeHtml(item.id)}">`
     + `<button type="button" class="shop-check" aria-label="${item.done ? '改回還沒買' : '買到了'}：${escapeHtml(item.text)}"></button>`
     + `<div class="shop-item-body"><div class="shop-item-text">${escapeHtml(item.text)}</div>${sub}</div>`
+    + side
     + `<button type="button" class="shop-del" aria-label="刪除：${escapeHtml(item.text)}">✕</button>`
     + '</div>'
     + (editingId === item.id && !item.done ? catEditorHtml(item, res) : '');
+}
+
+// ── 分組：清單一長就依「去哪裡買」分開，在哪間店就看哪一組 ──
+
+// 收合的組（只記在這次開著的網頁裡）
+const collapsedGroups = new Set();
+
+// 品項歸到第一個（最常買到的）類別；只找某家連鎖店的自成一組，排在它那一類後面；
+// 用品名找、AI 還在判斷的放最後
+function groupOf(res) {
+  const orderOf = catId => SHOP_CATEGORIES.findIndex(c => c.id === catId) * 2;
+  if (isClassifying(res)) return { id: 'ai', emoji: '✨', label: 'AI 判斷中', order: 1001 };
+  if (res.mode === 'chain') return { id: `chain:${res.chain.id}`, emoji: '🏷️', label: `只找${res.chain.label}`, order: orderOf(res.cats[0]) + 1 };
+  if (res.mode === 'name') return { id: 'name', emoji: '🔎', label: '用品名找', order: 1000 };
+  const cat = CATEGORY_BY_ID.get(res.cats[0]);
+  return { id: cat.id, emoji: cat.emoji, label: cat.label, order: orderOf(cat.id) };
+}
+
+function groupItems(list) {
+  const groups = new Map();
+  list.forEach(item => {
+    const g = groupOf(resolutionOf(item));
+    if (!groups.has(g.id)) groups.set(g.id, { ...g, items: [] });
+    groups.get(g.id).items.push(item);
+  });
+  return [...groups.values()].sort((a, b) => a.order - b.order);
+}
+
+function groupHtml(group) {
+  const collapsed = collapsedGroups.has(group.id);
+  // 收起來時在組名後面列出裡面有什麼，不用打開也知道
+  const preview = collapsed
+    ? `<span class="shop-group-preview">${group.items.map(it => escapeHtml(stripQuantity(it.text))).join('、')}</span>`
+    : '';
+  return `<section class="shop-group${collapsed ? ' collapsed' : ''}" data-group="${escapeHtml(group.id)}">`
+    + `<button type="button" class="shop-group-head" aria-expanded="${!collapsed}">`
+    + `<span class="shop-group-name">${group.emoji} ${escapeHtml(group.label)}</span>`
+    + `<span class="shop-group-count">${group.items.length}</span>`
+    + preview
+    + '<span class="shop-group-caret" aria-hidden="true"></span>'
+    + '</button>'
+    + (collapsed ? '' : `<div class="shop-group-body">${group.items.map(it => itemRowHtml(it, { grouped: true })).join('')}</div>`)
+    + '</section>';
+}
+
+function listBarHtml(pendingCount, groups) {
+  const allCollapsed = groups.every(g => collapsedGroups.has(g.id));
+  return '<div class="shop-list-bar">'
+    + `<span class="shop-list-total">還要買 <b>${pendingCount}</b> 項・分 ${groups.length} 組</span>`
+    + `<button type="button" class="shop-link-btn shop-toggle-all">${allCollapsed ? '全部展開' : '全部收合'}</button>`
+    + '<button type="button" class="shop-link-btn shop-jump-nearby">附近哪裡買 ↓</button>'
+    + '</div>';
+}
+
+function pendingListHtml(pending) {
+  const groups = groupItems(pending);
+  if (pending.length < GROUP_MIN_ITEMS || groups.length < 2) {
+    // 清單變短、回到攤開的樣子就忘掉收合狀態，下次再分組時全部從打開開始
+    collapsedGroups.clear();
+    return pending.map(it => itemRowHtml(it)).join('');
+  }
+  // 剛加入、剛改類別的品項所在的組自動打開，不然東西進了收起來的組會像是沒加成功
+  groups.forEach(g => {
+    if (g.items.some(it => justAddedIds.has(it.id))) collapsedGroups.delete(g.id);
+  });
+  return listBarHtml(pending.length, groups) + groups.map(groupHtml).join('');
+}
+
+function toggleGroup(groupId) {
+  if (collapsedGroups.has(groupId)) {
+    collapsedGroups.delete(groupId);
+  } else {
+    collapsedGroups.add(groupId);
+    const editing = items.find(it => it.id === editingId);
+    if (editing && groupOf(resolutionOf(editing)).id === groupId) editingId = null;
+  }
+  renderList();
+}
+
+function toggleAllGroups() {
+  const groups = groupItems(pendingItems());
+  if (groups.every(g => collapsedGroups.has(g.id))) {
+    collapsedGroups.clear();
+  } else {
+    groups.forEach(g => collapsedGroups.add(g.id));
+    editingId = null;
+  }
+  renderList();
 }
 
 let chipEditing = false;
@@ -437,11 +557,11 @@ function renderList() {
   const pending = pendingItems();
   const done = items.filter(it => it.done);
   shopListEl.innerHTML = pending.length
-    ? pending.map(itemRowHtml).join('')
+    ? pendingListHtml(pending)
     : `<div class="shop-empty">清單是空的。打字${shopVoiceBtn.hidden ? '' : '或按 🎤 用說的'}記下要買的東西，打開地圖就會標出附近哪裡買得到。</div>`;
   shopDoneSectionEl.hidden = !done.length;
   shopDoneSummaryEl.textContent = `已買 ${done.length} 項`;
-  shopDoneListEl.innerHTML = done.map(itemRowHtml).join('');
+  shopDoneListEl.innerHTML = done.map(it => itemRowHtml(it)).join('');
   shopModeCountEl.textContent = String(pending.length);
   shopModeCountEl.hidden = !pending.length;
   renderChips();
@@ -555,15 +675,30 @@ if (SpeechRecognitionCtor) {
 // ── 清單上的點擊 ──
 
 function onListClick(e) {
+  const groupHead = e.target.closest('.shop-group-head');
+  if (groupHead) {
+    toggleGroup(groupHead.closest('.shop-group').dataset.group);
+    return;
+  }
+  if (e.target.closest('.shop-toggle-all')) {
+    toggleAllGroups();
+    return;
+  }
+  if (e.target.closest('.shop-jump-nearby')) {
+    shopNearbyEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
   const editorEl = e.target.closest('.shop-cat-editor');
   if (editorEl) {
     const option = e.target.closest('.shop-cat-option');
     if (option) {
-      const on = !option.classList.contains('selected');
+      const on = !editingDraft.has(option.dataset.cat);
+      if (on) editingDraft.add(option.dataset.cat);
+      else editingDraft.delete(option.dataset.cat);
       option.classList.toggle('selected', on);
       option.setAttribute('aria-pressed', String(on));
     } else if (e.target.closest('.shop-cat-save')) {
-      saveCategories(editorEl.dataset.for, [...editorEl.querySelectorAll('.shop-cat-option.selected')].map(b => b.dataset.cat));
+      saveCategories(editorEl.dataset.for, SHOP_CATEGORIES.map(c => c.id).filter(c => editingDraft.has(c)));
     } else if (e.target.closest('.shop-cat-reset')) {
       resetCategories(editorEl.dataset.for);
     }
@@ -578,6 +713,10 @@ function onListClick(e) {
     deleteItem(id);
   } else if (e.target.closest('.shop-cat-btn')) {
     editingId = editingId === id ? null : id;
+    if (editingId) {
+      const res = resolutionOf(items.find(it => it.id === id));
+      editingDraft = new Set(res.mode === 'name' ? [] : res.cats);
+    }
     renderList();
   } else if (e.target.closest('.shop-item-hint[data-store-id]')) {
     focusStore(e.target.closest('.shop-item-hint').dataset.storeId);
