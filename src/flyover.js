@@ -26,7 +26,7 @@ function currentRoute() {
 // 有路線、是向量地圖、而且沒開著集章地圖時才顯示按鈕；
 // 搜尋結果渲染完、集章地圖開關、地圖的渲染類型確定後都會呼叫
 export function refreshFlyoverButton() {
-  const show = !!currentRoute() && isVectorMap() && !mapState.refitStampView;
+  const show = !!currentRoute() && isVectorMap() && !mapState.refitOverlayView;
   flyoverBtn.hidden = !show;
   if (!show) stopFlyover();
 }

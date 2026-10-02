@@ -351,7 +351,8 @@ async function runSearch(mode) {
     watchRenderingTypeForFlyover();
 
     if (destination) {
-      mapState.directionsRenderer.setMap(mapState.map);
+      // 搜尋途中切去採買地圖的話，路線先不要畫上去，切回美食模式時 restoreSearchLayer 會放回來
+      if (!mapState.searchRouteHidden) mapState.directionsRenderer.setMap(mapState.map);
       setStatus('規劃路線中…');
       const result = await new Promise((resolve, reject) => {
         mapState.directionsService.route(
@@ -376,8 +377,10 @@ async function runSearch(mode) {
       mapState.directionsRenderer.setMap(null);
       setStatus('定位起點中…');
       searchState.lastOriginLocation = await resolveLocationText(origin);
-      mapState.map.setCenter(searchState.lastOriginLocation);
-      mapState.map.setZoom(15);
+      if (!mapState.searchRouteHidden) {
+        mapState.map.setCenter(searchState.lastOriginLocation);
+        mapState.map.setZoom(15);
+      }
     }
 
     await searchAlongRoute(0);

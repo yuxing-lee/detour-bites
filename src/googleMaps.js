@@ -198,8 +198,8 @@ export function setMobileView(view) {
   // 所以切回地圖頁籤時不能只靠 resize，要用已知的路線邊界／起點座標重新套用一次，
   // 不然畫面可能整片灰掉，或停在容器還是 0 大小時算出來的錯誤縮放層級
   google.maps.event.trigger(mapState.map, 'resize');
-  if (mapState.refitStampView) {
-    mapState.refitStampView();
+  if (mapState.refitOverlayView) {
+    mapState.refitOverlayView();
     return;
   }
   if (searchState.allRoutes.length && searchState.allRoutes[searchState.selectedRouteIndex]) {
@@ -384,8 +384,95 @@ export function onMarkerHover(marker, onEnter, onLeave) {
 }
 
 export function removeMarker(marker) {
-  if (useAdvancedMarkers) marker.map = null;
-  else marker.setMap(null);
+  setMarkerMap(marker, null);
+}
+
+// 暫時收起／放回標記（不重建），例如採買地圖打開時把「踩新點」的 🎯 收起來
+export function setMarkerMap(marker, map) {
+  if (useAdvancedMarkers) marker.map = map;
+  else marker.setMap(map);
+}
+
+// 採買地圖的店家標記：泡泡裡是店家類別的圖示（🏪🛒💊…），在建議路線上的店框線變成強調色、
+// 右上角標第幾站；已打烊的店整顆變淡。舊版 Marker 只能放一個 label，所以只顯示圖示、用框線區分
+function shopMarkerIcon(plan, highlighted) {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale: highlighted ? 15 : (plan ? 13 : 11),
+    fillColor: '#f3f1ea',
+    fillOpacity: 1,
+    strokeColor: plan ? currentMealTheme().amber : '#9aa3c7',
+    strokeWeight: plan ? 3 : 2
+  };
+}
+
+export function createShopMarker({ position, title, emoji, step = 0, closed = false, index = 0, map = null }) {
+  if (useAdvancedMarkers) {
+    const pin = document.createElement('div');
+    pin.className = 'map-pin map-pin-shop map-pin-enter' + (step ? ' map-pin-plan' : '') + (closed ? ' map-pin-closed' : '');
+    pin.style.animationDelay = `${Math.min(index, 12) * 40}ms`;
+    pin.addEventListener('animationend', () => pin.classList.remove('map-pin-enter'), { once: true });
+    const emojiEl = document.createElement('span');
+    emojiEl.className = 'map-pin-emoji';
+    emojiEl.textContent = emoji;
+    pin.appendChild(emojiEl);
+    if (step) {
+      const badge = document.createElement('span');
+      badge.className = 'map-pin-index';
+      badge.textContent = String(step);
+      pin.appendChild(badge);
+    }
+    return new google.maps.marker.AdvancedMarkerElement({
+      position,
+      map,
+      title,
+      content: pin,
+      gmpClickable: true,
+      zIndex: step ? 50 : 10
+    });
+  }
+  return new google.maps.Marker({
+    position,
+    map,
+    title,
+    icon: shopMarkerIcon(!!step, false),
+    label: { text: emoji, fontSize: '14px' },
+    opacity: closed ? 0.55 : 1,
+    zIndex: step ? 50 : 10
+  });
+}
+
+export function setShopMarkerHighlighted(marker, isOn, plan) {
+  if (useAdvancedMarkers) {
+    marker.content.classList.toggle('highlighted', isOn);
+    marker.zIndex = isOn ? 100 : (plan ? 50 : 10);
+  } else {
+    marker.setIcon(shopMarkerIcon(plan, isOn));
+  }
+}
+
+// 採買地圖上「你在這裡」的藍點
+export function createUserLocationMarker(position, map) {
+  if (useAdvancedMarkers) {
+    const dot = document.createElement('div');
+    dot.className = 'me-dot';
+    return new google.maps.marker.AdvancedMarkerElement({ position, map, title: '你在這裡', content: dot, zIndex: 5 });
+  }
+  return new google.maps.Marker({
+    position,
+    map,
+    title: '你在這裡',
+    clickable: false,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 7,
+      fillColor: '#4285f4',
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: 3
+    },
+    zIndex: 5
+  });
 }
 
 function setMarkerHighlighted(marker, isOn) {
@@ -496,12 +583,13 @@ export function flyToForInfoWindow(pos, zoom) {
   });
 }
 
-// 集章地圖這類不是搜尋結果的標記用：直接給 HTML 內容，跟搜尋結果共用同一個 InfoWindow，
-// 一次只會開著一個
+// 集章地圖、採買地圖這類不是搜尋結果的標記用：直接給 HTML 內容，跟搜尋結果共用同一個 InfoWindow，
+// 一次只會開著一個。回傳 InfoWindow，呼叫端要在裡面接按鈕事件時可以等它的 domready
 export function openSimpleInfoWindow(html, anchor) {
   if (activeInfoWindow) activeInfoWindow.close();
   activeInfoWindow = new google.maps.InfoWindow({ content: html });
   activeInfoWindow.open({ map: mapState.map, anchor });
+  return activeInfoWindow;
 }
 
 export function closeActiveInfoWindow() {

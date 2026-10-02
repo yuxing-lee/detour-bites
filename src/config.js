@@ -41,6 +41,32 @@ export const MAX_ROUTE_DEVIATION_M = 600;
 
 export const SEARCH_STORAGE_KEY = 'detour-bites:lastSearch';
 export const EATEN_STORAGE_KEY = 'detour-bites:eatenPlaces';
+export const APP_MODE_STORAGE_KEY = 'detour-bites:appMode';
+export const SHOP_LIST_STORAGE_KEY = 'detour-bites:shoppingList';
+// 使用者改過的品項類別、購買紀錄（「常買」那排）、AI 判斷過的品項，都存在這裡
+export const SHOP_MEMORY_STORAGE_KEY = 'detour-bites:shoppingMemory';
+export const SHOP_CACHE_STORAGE_KEY = 'detour-bites:shopSearchCache';
+// Google 回覆不認得的店家類型（新類型還沒開放時），記一陣子，之後的搜尋直接不帶
+export const SHOP_UNSUPPORTED_TYPES_STORAGE_KEY = 'detour-bites:shopUnsupportedTypes';
+
+// 採買地圖：預設找多遠內的店；某一類在這個範圍內一間都找不到時，自動放大到 SHOP_EXPANDED_RADIUS_M 再找一次，
+// 讓「附近沒有五金行」也能告訴使用者最近的在哪
+export const SHOP_SEARCH_RADIUS_M = 1500;
+export const SHOP_EXPANDED_RADIUS_M = 5000;
+// 品項直接寫連鎖店名（好市多、IKEA）時，那家店本來就少，範圍放到這麼大
+export const SHOP_CHAIN_RADIUS_M = 30000;
+// 每一類的搜尋結果快取多久、目前位置離上次搜尋的中心多遠以內可以沿用。
+// 營業中／打烊會用 nextOpenTime、nextCloseTime 依當下時間校正，快取期間跨過打烊時間也不會顯示錯
+export const SHOP_CACHE_TTL_MS = 30 * 60 * 1000;
+export const SHOP_CACHE_REUSE_DISTANCE_M = 250;
+// 沒有任何類別資訊的品項會直接拿名稱去地圖搜尋，每項一次計費請求，一次最多查這麼多項
+export const SHOP_MAX_NAME_SEARCHES = 5;
+// 要知道「現在有沒有開、開到幾點」得多抓 currentOpeningHours，這個欄位讓請求落在 Enterprise 計費級距
+// （跟餐廳搜尋一樣）；改成 false 會降到 Pro 級距（免費額度比較多），但就看不到營業狀態
+export const SHOP_FETCH_OPENING_HOURS = true;
+// 清單跟地圖上最多列幾間店；每個品項至少保留幾間最近、有開的店
+export const SHOP_MAX_STORES_SHOWN = 20;
+export const SHOP_STORES_PER_ITEM = 3;
 
 // Place Photo Media 端點是額外計費的 SKU（跟抓 photos 欄位本身的 metadata 不同），
 // 每次「查看照片」點擊最多只載入這麼多張，避免使用者連點或店家照片很多時一次觸發大量計費請求

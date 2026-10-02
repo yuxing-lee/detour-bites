@@ -1,6 +1,6 @@
 import { GOOGLE_MAPS_API_KEY, PLACES_CONCURRENCY, EATEN_GOOD_RATING_THRESHOLD } from './config.js';
 import { openStampMapBtn, stampMapBarEl, stampMapSummaryEl, closeStampMapBtn } from './dom.js';
-import { mapState, searchState } from './state.js';
+import { mapState } from './state.js';
 import { escapeHtml, mapWithConcurrency } from './utils.js';
 import { getEatenEntries, setEatenLocation, closeEatenModal } from './eatenList.js';
 import { fetchPlaceLocation } from './placesApi.js';
@@ -14,9 +14,9 @@ import {
   openSimpleInfoWindow,
   closeActiveInfoWindow
 } from './googleMaps.js';
-import { finishRouteReveal, discardPendingRouteReveal } from './routeAnimation.js';
 import { setStatus } from './ui.js';
-import { stopFlyover, refreshFlyoverButton } from './flyover.js';
+import { refreshFlyoverButton } from './flyover.js';
+import { hideSearchLayer, restoreSearchLayer } from './searchLayer.js';
 
 // 「集章地圖」：把所有標記過吃過的店，用印章的樣子一次攤在地圖上，
 // 讓吃過清單變成一本可以慢慢集滿的美食圖鑑。
@@ -56,28 +56,6 @@ async function backfillLocations(entries) {
   setStatus(`集章地圖：補上 ${found}/${missing.length} 間店的位置`, found ? 'ok' : 'error');
 }
 
-function hideSearchLayer() {
-  stopFlyover();
-  // 沿路動畫還在跑或等著手機切到地圖頁籤才播的，都先收掉，不然切到地圖時會把搜尋標記又放出來
-  finishRouteReveal();
-  discardPendingRouteReveal();
-  closeActiveInfoWindow();
-  if (mapState.placeMarkerCluster) mapState.placeMarkerCluster.clearMarkers();
-}
-
-function restoreSearchLayer() {
-  if (mapState.placeMarkerCluster && mapState.placeMarkers.length) {
-    mapState.placeMarkerCluster.addMarkers(mapState.placeMarkers);
-  }
-  const route = searchState.allRoutes[searchState.selectedRouteIndex];
-  if (route) {
-    mapState.map.fitBounds(route.bounds);
-  } else if (searchState.lastOriginLocation) {
-    mapState.map.setCenter(searchState.lastOriginLocation);
-    mapState.map.setZoom(15);
-  }
-}
-
 export async function openStampMap() {
   if (opening) return;
   closeEatenModal();
@@ -99,7 +77,7 @@ export async function openStampMap() {
     stampMapBarEl.hidden = false;
     setMobileView('map');
     // 先放一個空的對焦函式代表「集章地圖開著」，飛覽按鈕看到它就會隱藏；有印章時下面再換成真的
-    mapState.refitStampView = () => {};
+    mapState.refitOverlayView = () => {};
     refreshFlyoverButton();
 
     const located = entries
@@ -132,7 +110,7 @@ export async function openStampMap() {
       return marker;
     });
 
-    mapState.refitStampView = () => {
+    mapState.refitOverlayView = () => {
       if (located.length === 1) {
         mapState.map.setCenter(bounds.getCenter());
         mapState.map.setZoom(15);
@@ -140,7 +118,7 @@ export async function openStampMap() {
         mapState.map.fitBounds(bounds, 60);
       }
     };
-    mapState.refitStampView();
+    mapState.refitOverlayView();
   } catch (err) {
     console.error(err);
     setStatus(err.message || '集章地圖載入失敗', 'error');
@@ -158,11 +136,13 @@ function clearStamps() {
 export function exitStampMap({ restoreView = true } = {}) {
   if (!isOpen) return;
   isOpen = false;
-  mapState.refitStampView = null;
+  mapState.refitOverlayView = null;
   clearStamps();
   closeActiveInfoWindow();
   stampMapBarEl.hidden = true;
-  if (restoreView) restoreSearchLayer();
+  // 不還原視角時（馬上要渲染新的搜尋結果，或要切到採買地圖）標記還是要交還，
+  // 由接手的人決定接下來看哪裡
+  restoreSearchLayer({ refit: restoreView });
   refreshFlyoverButton();
 }
 

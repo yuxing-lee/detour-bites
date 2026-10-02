@@ -142,3 +142,35 @@ export async function semanticMatchDishKeyword(dishKeyword, candidates) {
     required: ['matchedIndexes']
   });
 }
+
+// 採買清單的 AI 備援：字典對不到的品項（或只能用單字猜的），一次整批交給 Gemini 判斷
+// 「在台灣通常去哪一類店買」。只能從我們自己的類別 id 裡挑（schema 用 enum 限制），
+// 結果會快取在 localStorage，同一個品項之後不會再問
+export async function classifyShoppingItems(names, categories) {
+  const catLines = categories.map(c => `- ${c.id}：${c.label}（${c.hint}）`).join('\n');
+  const prompt = `你是台灣的購物助手。下面是使用者採買清單上的品項，請判斷每一項在台灣通常要去哪一類店才買得到，從類別清單挑 1～3 個類別 id（最常去買的放第一個）。如果品項不是買得到的東西、或類別清單裡沒有合適的，就回傳空陣列。index 請照品項前面的編號回填。
+
+類別清單（只能用這些 id）：
+${catLines}
+
+品項：
+${names.map((n, i) => `${i}. ${n}`).join('\n')}`;
+
+  return callGemini(prompt, {
+    type: 'OBJECT',
+    properties: {
+      results: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            index: { type: 'INTEGER' },
+            categories: { type: 'ARRAY', items: { type: 'STRING', enum: categories.map(c => c.id) } }
+          },
+          required: ['index', 'categories']
+        }
+      }
+    },
+    required: ['results']
+  });
+}
