@@ -28,7 +28,7 @@ function isMapVisible() {
 export function playRouteReveal(route) {
   const places = mapState.placeData;
   cancelRouteReveal();
-  if (!GOOGLE_MAP_ID || !route || !places.length || prefersReducedMotion()) return;
+  if (!GOOGLE_MAP_ID || !route || !places.length || prefersReducedMotion() || mapState.searchLayerHidden) return;
   if (!isMapVisible()) {
     pending = { route, places, markers: mapState.placeMarkers };
     return;

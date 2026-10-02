@@ -1146,6 +1146,622 @@
     line-height: 1.5;
   }
 
+  /* ── 找吃的／要買的 模式切換 ── */
+  .mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    margin: -6px 0 18px;
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+  }
+
+  .mode-tab {
+    margin: 0;
+    padding: 9px 10px;
+    font-size: 14px;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 7px;
+  }
+
+  .mode-tab:hover { background: rgba(var(--amber-rgb), 0.1); color: var(--paper); transform: none; }
+  .mode-tab.active { background: var(--amber); color: #221202; }
+
+  .mode-count {
+    display: inline-block;
+    min-width: 18px;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #e6816f;
+    color: #12172b;
+    font-size: 11px;
+    line-height: 18px;
+    vertical-align: 1px;
+  }
+
+  .mode-tab.active .mode-count { background: #221202; color: var(--amber); }
+
+  /* ── 採買清單 ── */
+  /* 輸入列黏在最上面：清單很長、捲到下面也能馬上再加一樣 */
+  /* 桌機版側邊欄自己捲動，sticky 的位置會從側邊欄的 padding（28px）裡面算起，往上抵掉才會貼齊頂端 */
+  .shop-add-bar {
+    position: sticky;
+    top: -28px;
+    z-index: 15;
+    display: flex;
+    gap: 6px;
+    margin: 0 -26px;
+    padding: 8px 26px;
+    background: var(--panel);
+    box-shadow: 0 8px 10px -10px rgba(0, 0, 0, 0.6);
+  }
+
+  .shop-add-bar input { flex: 1; min-width: 0; font-size: 15px; }
+
+  .shop-add-btn,
+  .shop-voice-btn {
+    flex: none;
+    width: auto;
+    margin: 0;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .shop-voice-btn {
+    padding: 0 12px;
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    font-size: 17px;
+  }
+
+  .shop-voice-btn:hover { background: #1f274a; }
+  .shop-voice-btn.is-listening { background: #e6816f; border-color: #e6816f; animation: micPulse 1.2s ease-in-out infinite; }
+
+  @keyframes micPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(230, 129, 111, 0.55); }
+    50% { box-shadow: 0 0 0 8px rgba(230, 129, 111, 0); }
+  }
+
+  .shop-input-note {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* 全站 button 預設是滿版寬、上方留白、橘底，清單裡的小按鈕都要縮回來。
+     用 :where() 把權重壓低，下面各按鈕自己的寬高（例如打勾圓圈）才蓋得過這條 */
+  .shop-panel :where(button:not(.shop-add-btn, .secondary-btn)) {
+    width: auto;
+    margin: 0;
+    box-shadow: none;
+  }
+
+  .shop-panel :where(button:not(.shop-add-btn, .secondary-btn)):hover { transform: none; }
+
+  .shop-link-btn {
+    padding: 2px 4px;
+    background: transparent;
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+
+  .shop-link-btn:hover { background: transparent; color: var(--amber-hi); }
+
+  .shop-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 12px 0 14px;
+  }
+
+  .shop-chips:empty { display: none; }
+
+  .shop-chips-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-right: 2px;
+  }
+
+  .shop-chip {
+    padding: 5px 10px;
+    border: 1px solid var(--panel-line);
+    border-radius: 999px;
+    background: #0f1428;
+    color: var(--paper);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  .shop-chip::before { content: '＋'; color: var(--amber); margin-right: 2px; }
+  .shop-chip:hover { border-color: var(--amber-dim); background: #141a35; }
+  .shop-chip.editing::before { content: '✕'; color: #e6816f; }
+
+  .shop-empty {
+    padding: 14px;
+    border: 1px dashed var(--panel-line);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .shop-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 10px 10px 12px;
+    margin-bottom: 8px;
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    transition: border-color 0.15s ease;
+  }
+
+  .shop-item.editing { border-color: var(--amber-dim); }
+  .shop-item-new { animation: cardEnter 0.3s ease both; }
+
+  .shop-check {
+    flex: none;
+    position: relative;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid var(--amber-dim);
+    background: transparent;
+  }
+
+  .shop-check:hover { background: rgba(var(--amber-rgb), 0.15); }
+
+  .shop-item.done .shop-check {
+    background: var(--good);
+    border-color: var(--good);
+  }
+
+  .shop-item.done .shop-check::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #12172b;
+    font-size: 14px;
+    font-weight: 900;
+  }
+
+  .shop-item-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .shop-item-text {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--paper);
+    line-height: 1.45;
+    word-break: break-word;
+  }
+
+  .shop-item.done .shop-item-text {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+
+  .shop-item-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    margin-top: 5px;
+  }
+
+  .shop-cat-btn {
+    padding: 2px 9px;
+    border: 1px solid var(--amber-dim);
+    border-radius: 999px;
+    background: rgba(var(--amber-rgb), 0.1);
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  .shop-cat-btn:hover { background: rgba(var(--amber-rgb), 0.2); }
+
+  .shop-src {
+    margin-left: 5px;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--panel-line);
+    color: var(--muted);
+    font-size: 10.5px;
+  }
+
+  .shop-item-hint {
+    padding: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    line-height: 1.5;
+  }
+
+  .shop-item-hint.found { color: var(--good); cursor: pointer; }
+  .shop-item-hint.found:hover { background: transparent; text-decoration: underline; }
+  .shop-item-hint.warn { color: #e6b36f; }
+
+  .shop-del {
+    flex: none;
+    padding: 2px 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  .shop-del:hover { background: transparent; color: #e6816f; }
+
+  .shop-cat-editor {
+    margin: -4px 0 10px;
+    padding: 12px;
+    border: 1px dashed var(--amber-dim);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: #12172b;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .shop-cat-editor-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--paper);
+    margin-bottom: 8px;
+  }
+
+  .shop-cat-editor-title span {
+    display: block;
+    margin-top: 2px;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .shop-cat-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .shop-cat-option {
+    padding: 5px 9px;
+    border: 1px solid var(--panel-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  .shop-cat-option:hover { border-color: var(--amber-dim); background: transparent; color: var(--paper); }
+  .shop-cat-option.selected,
+  .shop-cat-option.selected:hover { background: var(--amber); border-color: var(--amber); color: #221202; }
+
+  .shop-cat-editor-note {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .shop-cat-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .shop-cat-save {
+    padding: 6px 16px;
+    font-size: 13px;
+  }
+
+  .shop-done {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .shop-done summary {
+    cursor: pointer;
+    padding: 6px 0;
+  }
+
+  .shop-done .shop-list { margin-top: 6px; }
+
+  .shop-clear-done {
+    margin-top: 4px;
+    padding: 6px 12px;
+  }
+
+  .shop-nearby-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .shop-nearby-header h2 {
+    font-size: 15px;
+    color: var(--paper);
+  }
+
+  .shop-refresh-btn { padding: 5px 10px; font-size: 12.5px; }
+
+  .shop-nearby-status {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  .shop-nearby-status:empty { display: none; }
+  .shop-status-sub { margin-top: 2px; }
+  .shop-status-error { color: #e6816f; }
+
+  .shop-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    vertical-align: -1px;
+    border: 2px solid rgba(var(--amber-rgb), 0.3);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .shop-plan {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--amber-dim);
+    border-radius: 8px;
+    background: rgba(var(--amber-rgb), 0.08);
+    animation: fadeIn 0.25s ease;
+  }
+
+  .shop-plan-empty { border-style: dashed; background: transparent; }
+
+  .shop-plan-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--amber);
+  }
+
+  .shop-plan-steps {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+  }
+
+  .shop-plan-step {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(var(--amber-rgb), 0.18);
+    cursor: pointer;
+  }
+
+  .shop-plan-step:first-child { border-top: none; }
+
+  .shop-plan-num {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: #221202;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .shop-plan-body { min-width: 0; }
+  .shop-plan-store { font-size: 13.5px; font-weight: 600; color: var(--paper); }
+  .shop-plan-meta { font-size: 12px; color: var(--muted); }
+  .shop-plan-items { font-size: 12.5px; color: var(--paper); margin-top: 2px; }
+
+  .shop-plan-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    margin-top: 8px;
+    border-radius: 6px;
+    background: var(--amber);
+    color: #221202;
+    font-size: 13.5px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .shop-plan-nav:hover { background: var(--amber-hi); }
+
+  .shop-plan-note {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #e6b36f;
+    line-height: 1.6;
+  }
+
+  .shop-plan-empty .shop-plan-note:first-child { margin-top: 0; }
+  .shop-plan-hint { color: var(--muted); }
+
+  .shop-open.open { color: var(--good); }
+  .shop-open.soon { color: #e6b36f; }
+  .shop-open.closed { color: #e6816f; }
+
+  .shop-store-caption {
+    margin-bottom: 8px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .shop-store {
+    padding: 11px 13px;
+    margin-bottom: 8px;
+    background: #0f1428;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  .shop-store:hover,
+  .shop-store.highlighted { border-color: var(--amber-dim); transform: translateY(-2px); }
+  .shop-store.plan { border-color: rgba(var(--amber-rgb), 0.55); }
+  .shop-store.closed { opacity: 0.7; }
+
+  .shop-store-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
+  .shop-store-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: #221202;
+    font-size: 10.5px;
+    font-weight: 700;
+    vertical-align: 1px;
+  }
+
+  .shop-store-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .shop-store-dist { color: var(--amber); font-weight: 700; }
+
+  .shop-store-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+  }
+
+  .shop-store-item {
+    padding: 3px 9px;
+    border: 1px solid var(--panel-line);
+    border-radius: 999px;
+    background: #171d35;
+    color: var(--paper);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .shop-store-item::before { content: '○ '; color: var(--good); }
+  .shop-store-item:hover { border-color: var(--good); background: rgba(111, 191, 139, 0.12); }
+  .shop-store-item:hover::before { content: '✓ '; }
+
+  .shop-store-actions {
+    display: flex;
+    gap: 14px;
+    margin-top: 8px;
+    font-size: 12.5px;
+  }
+
+  .shop-store-actions a {
+    color: var(--amber);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .shop-store-actions a:hover { text-decoration: underline; }
+
+  /* 採買地圖的店家標記：沿用美食泡泡的外型，框線預設是灰藍色，建議路線上的店用強調色＋站號，打烊的變淡 */
+  .map-pin-shop { border-color: #9aa3c7; background: #f3f1ea; }
+  .map-pin-shop::after { border-top-color: #9aa3c7; }
+  .map-pin-shop.map-pin-plan { border-color: var(--amber); border-width: 3px; }
+  .map-pin-shop.map-pin-plan::after { border-top-color: var(--amber); }
+  .map-pin-shop.map-pin-closed { opacity: 0.55; filter: grayscale(0.7); }
+  .map-pin-shop.highlighted { background: #ffffff; }
+
+  /* 「你在這裡」：Advanced Marker 的錨點在 content 底部中央，往下拉半顆讓圓心對準座標 */
+  .me-dot {
+    width: 18px;
+    height: 18px;
+    margin-bottom: -9px;
+    border-radius: 50%;
+    background: #4285f4;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 0 6px rgba(66, 133, 244, 0.25), 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .shop-map-bar .stamp-map-close { padding: 4px 9px; font-size: 13px; }
+
+  /* 底部的短暫提示（加入、刪除後可以按「復原」） */
+  .toast {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    margin: 0 auto;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 10px 10px 16px;
+    border-radius: 999px;
+    background: #f3f1ea;
+    color: #12172b;
+    font-size: 13.5px;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .toast-pop { animation: popIn 0.25s ease; }
+  .toast-msg { line-height: 1.4; }
+
+  .toast-action {
+    flex: none;
+    width: auto;
+    margin: 0;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: #12172b;
+    color: var(--amber);
+    font-size: 13px;
+  }
+
+  .toast-action:hover { background: #1b2140; transform: none; }
+
   /* 手機版覆寫放最後，確保能蓋過上面的基本樣式（同權重時 CSS 用後者為準） */
   @media (max-width: 860px) {
     /* 手機版才有「清單／地圖」頁籤，固定在最上面，兩邊切換不用滑過整個表單跟清單 */
@@ -1207,4 +1823,10 @@
       border-radius: 0;
       padding: 16px 10px calc(16px + env(safe-area-inset-bottom));
     }
+
+    /* 手機版整頁捲動，輸入列黏在「清單／地圖」頁籤下面。側邊欄在手機上本來就跟內容一樣高、
+       不會自己捲動，但 overflow-y: auto 會讓它變成 sticky 的捲動容器，輸入列就黏不住，所以拿掉 */
+    .sidebar { overflow-y: visible; }
+    .shop-add-bar { top: 46px; }
+    .shop-add-bar input { font-size: 16px; }
   }

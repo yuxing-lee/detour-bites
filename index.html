@@ -19,87 +19,122 @@
 <div class="app" id="appEl">
   <div class="sidebar">
     <header>
-      <h1>沿路美食搜尋</h1>
-      <div class="tagline">找附近的餐廳，或填目的地找順路的</div>
+      <h1 id="appTitle">沿路美食搜尋</h1>
+      <div class="tagline" id="appTagline">找附近的餐廳，或填目的地找順路的</div>
       <div id="mealBadge" class="meal-badge" hidden></div>
     </header>
 
-    <label for="origin">起點</label>
-    <div class="input-with-button">
+    <div class="mode-switch" id="modeSwitch" role="tablist" aria-label="切換功能">
+      <button type="button" class="mode-tab active" data-mode="food" role="tab" aria-selected="true">🍜 找吃的</button>
+      <button type="button" class="mode-tab" data-mode="shop" role="tab" aria-selected="false">🛒 要買的<span id="shopModeCount" class="mode-count" hidden></span></button>
+    </div>
+
+    <div id="foodPanel">
+      <label for="origin">起點</label>
+      <div class="input-with-button">
+        <div class="autocomplete-wrap">
+          <input id="origin" type="text" placeholder="例如：台北車站" autocomplete="off" />
+          <div id="originSuggestions" class="autocomplete-list" hidden></div>
+        </div>
+        <button type="button" id="useCurrentLocationBtn" class="secondary-btn">目前位置</button>
+      </div>
+
+      <label for="destination">目的地（找順路餐廳才需要）</label>
       <div class="autocomplete-wrap">
-        <input id="origin" type="text" placeholder="例如：台北車站" autocomplete="off" />
-        <div id="originSuggestions" class="autocomplete-list" hidden></div>
+        <input id="destination" type="text" placeholder="例如：台中高鐵站" autocomplete="off" />
+        <div id="destinationSuggestions" class="autocomplete-list" hidden></div>
       </div>
-      <button type="button" id="useCurrentLocationBtn" class="secondary-btn">目前位置</button>
-    </div>
 
-    <label for="destination">目的地（找順路餐廳才需要）</label>
-    <div class="autocomplete-wrap">
-      <input id="destination" type="text" placeholder="例如：台中高鐵站" autocomplete="off" />
-      <div id="destinationSuggestions" class="autocomplete-list" hidden></div>
-    </div>
+      <label for="keyword">想吃什麼（選填）</label>
+      <input id="keyword" type="text" placeholder="例如：拉麵，或口語像「便宜、現在有開」" />
 
-    <label for="keyword">想吃什麼（選填）</label>
-    <input id="keyword" type="text" placeholder="例如：拉麵，或口語像「便宜、現在有開」" />
-
-    <details class="advanced-options" id="advancedOptions">
-      <summary>更多條件</summary>
-      <div class="row2">
-        <div>
-          <label for="targetCount">找幾間</label>
-          <input id="targetCount" type="number" value="10" min="1" max="50" step="1" />
+      <details class="advanced-options" id="advancedOptions">
+        <summary>更多條件</summary>
+        <div class="row2">
+          <div>
+            <label for="targetCount">找幾間</label>
+            <input id="targetCount" type="number" value="10" min="1" max="50" step="1" />
+          </div>
+          <div>
+            <label for="radius">搜尋半徑 (m)</label>
+            <input id="radius" type="number" value="1200" min="100" step="100" />
+          </div>
         </div>
-        <div>
-          <label for="radius">搜尋半徑 (m)</label>
-          <input id="radius" type="number" value="1200" min="100" step="100" />
+
+        <label for="dishKeyword">評論要提到的餐點</label>
+        <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
+        <div class="key-note">只留下 Google 評論裡有人提到的店家；會多查每間店的評論，比較慢。</div>
+      </details>
+
+      <div class="search-actions">
+        <button type="button" id="nearbyBtn">📍 附近吃什麼</button>
+        <button type="button" id="searchBtn">🚗 順路吃什麼</button>
+      </div>
+      <div id="status" class="status"></div>
+      <div id="routeOptions" class="route-options" hidden></div>
+
+      <div class="divider"></div>
+
+      <button type="button" id="manageEatenBtn" class="manage-eaten-btn secondary-btn">📋 管理吃過清單</button>
+
+      <div class="results">
+        <h2>搜尋結果</h2>
+        <div id="discoverBox" class="discover-box" hidden>
+          <div class="discover-title">🎲 踩新點</div>
+          <div class="discover-sub">不知道吃什麼？從這次結果隨機挑一間還沒吃過的。</div>
+          <label class="checkbox-label">
+            <input type="checkbox" id="includeEatenCheckbox" />
+            包含吃過的高評價餐廳（4★以上）
+          </label>
+          <button type="button" id="discoverBtn" class="discover-btn">🎲 隨機挑一間</button>
+          <div id="discoverResult"></div>
         </div>
+        <div id="resultsControls" class="results-controls" hidden>
+          <select id="sortSelect">
+            <option id="sortDistanceOption" value="distance">順路優先</option>
+            <option value="rating">評分高到低</option>
+            <option value="price">價格低到高</option>
+          </select>
+          <label class="checkbox-label">
+            <input type="checkbox" id="openNowOnly" />
+            只顯示營業中
+          </label>
+          <label class="checkbox-label" id="sameSideOnlyLabel" hidden>
+            <input type="checkbox" id="sameSideOnly" />
+            只看同側（右側）的店
+          </label>
+        </div>
+        <div id="resultCount" class="count">尚未搜尋</div>
+        <div id="resultList"></div>
       </div>
-
-      <label for="dishKeyword">評論要提到的餐點</label>
-      <input id="dishKeyword" type="text" placeholder="例如：小籠包、辣味" />
-      <div class="key-note">只留下 Google 評論裡有人提到的店家；會多查每間店的評論，比較慢。</div>
-    </details>
-
-    <div class="search-actions">
-      <button type="button" id="nearbyBtn">📍 附近吃什麼</button>
-      <button type="button" id="searchBtn">🚗 順路吃什麼</button>
     </div>
-    <div id="status" class="status"></div>
-    <div id="routeOptions" class="route-options" hidden></div>
 
-    <div class="divider"></div>
-
-    <button type="button" id="manageEatenBtn" class="manage-eaten-btn secondary-btn">📋 管理吃過清單</button>
-
-    <div class="results">
-      <h2>搜尋結果</h2>
-      <div id="discoverBox" class="discover-box" hidden>
-        <div class="discover-title">🎲 踩新點</div>
-        <div class="discover-sub">不知道吃什麼？從這次結果隨機挑一間還沒吃過的。</div>
-        <label class="checkbox-label">
-          <input type="checkbox" id="includeEatenCheckbox" />
-          包含吃過的高評價餐廳（4★以上）
-        </label>
-        <button type="button" id="discoverBtn" class="discover-btn">🎲 隨機挑一間</button>
-        <div id="discoverResult"></div>
+    <div id="shopPanel" class="shop-panel" hidden>
+      <div class="shop-add-bar">
+        <input id="shopInput" type="text" placeholder="要買什麼？例如：牛奶、電池、感冒藥" autocomplete="off" enterkeyhint="enter" aria-label="新增要買的東西" />
+        <button type="button" id="shopVoiceBtn" class="shop-voice-btn" aria-label="用說的加入" title="用說的加入" hidden>🎤</button>
+        <button type="button" id="shopAddBtn" class="shop-add-btn">加入</button>
       </div>
-      <div id="resultsControls" class="results-controls" hidden>
-        <select id="sortSelect">
-          <option id="sortDistanceOption" value="distance">順路優先</option>
-          <option value="rating">評分高到低</option>
-          <option value="price">價格低到高</option>
-        </select>
-        <label class="checkbox-label">
-          <input type="checkbox" id="openNowOnly" />
-          只顯示營業中
-        </label>
-        <label class="checkbox-label" id="sameSideOnlyLabel" hidden>
-          <input type="checkbox" id="sameSideOnly" />
-          只看同側（右側）的店
-        </label>
+      <div id="shopInputNote" class="shop-input-note">一次可以加好幾樣，用頓號、逗號或換行隔開</div>
+      <div id="shopChips" class="shop-chips"></div>
+      <div id="shopList" class="shop-list"></div>
+      <details id="shopDoneSection" class="shop-done" hidden>
+        <summary id="shopDoneSummary">已買</summary>
+        <div id="shopDoneList" class="shop-list"></div>
+        <button type="button" id="shopClearDoneBtn" class="secondary-btn shop-clear-done">清除已買</button>
+      </details>
+
+      <div class="divider"></div>
+
+      <div class="shop-nearby">
+        <div class="shop-nearby-header">
+          <h2>📍 附近哪裡買</h2>
+          <button type="button" id="shopRefreshBtn" class="secondary-btn shop-refresh-btn">🔄 重新找</button>
+        </div>
+        <div id="shopNearbyStatus" class="shop-nearby-status"></div>
+        <div id="shopPlan"></div>
+        <div id="shopStoreList"></div>
       </div>
-      <div id="resultCount" class="count">尚未搜尋</div>
-      <div id="resultList"></div>
     </div>
   </div>
 
@@ -112,8 +147,15 @@
       <span id="stampMapSummary" class="stamp-map-summary"></span>
       <button type="button" id="closeStampMapBtn" class="stamp-map-close">結束集章地圖</button>
     </div>
+    <div id="shopMapBar" class="stamp-map-bar shop-map-bar" hidden>
+      <span id="shopMapSummary" class="stamp-map-summary"></span>
+      <button type="button" id="shopMapRefreshBtn" class="stamp-map-close" aria-label="重新找附近的店">🔄</button>
+    </div>
+    <button type="button" id="shopSearchAreaBtn" class="map-float-btn" hidden>🔍 搜尋這一帶</button>
   </div>
 </div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <div id="eatenModalOverlay" class="modal-overlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eatenModalTitle">

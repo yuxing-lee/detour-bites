@@ -8,13 +8,12 @@ import { wireReviewAndAiActions, wirePhotoGalleryAction } from './placeActions.j
 import { flyToForInfoWindow, openPlaceInfoWindow, createPlaceMarker, removeMarker, setMarkerEaten, setPlaceHighlighted } from './googleMaps.js';
 import { stopFlyover } from './flyover.js';
 
-let discoverMarker = null;
 let lastDiscoverPickId = null;
 
 function clearDiscoverMarker() {
-  if (discoverMarker) {
-    removeMarker(discoverMarker);
-    discoverMarker = null;
+  if (mapState.discoverMarker) {
+    removeMarker(mapState.discoverMarker);
+    mapState.discoverMarker = null;
   }
 }
 
@@ -79,11 +78,11 @@ function renderDiscoverResult(p) {
   wirePhotoGalleryAction(discoverResultEl, p);
 
   clearDiscoverMarker();
-  discoverMarker = createPlaceMarker({ position: pos, title: name, variant: 'discover', map: mapState.map });
-  const marker = discoverMarker;
+  mapState.discoverMarker = createPlaceMarker({ position: pos, title: name, variant: 'discover', map: mapState.map });
+  const marker = mapState.discoverMarker;
   flyToForInfoWindow(pos, 16).then(landed => {
     // 飛行途中又抽了下一間的話，這一間的窗就不用開了
-    if (landed && marker === discoverMarker) openPlaceInfoWindow(p, pos, marker, discoverResultEl);
+    if (landed && marker === mapState.discoverMarker) openPlaceInfoWindow(p, pos, marker, discoverResultEl);
   });
 }
 

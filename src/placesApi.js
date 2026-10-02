@@ -1,4 +1,4 @@
-import { GOOGLE_MAPS_API_KEY, PLACE_FIELD_MASK } from './config.js';
+import { GOOGLE_MAPS_API_KEY, PLACE_FIELD_MASK, SHOP_FETCH_OPENING_HOURS } from './config.js';
 
 // 有填關鍵字時：改用 Text Search (New)，比對更接近 Google Maps 打字搜尋的語意/相關性
 // locationBias 只是「軟性」偏好、不是硬性邊界，所以另外用實際距離過濾回半徑內
@@ -161,4 +161,80 @@ export async function fetchPlaceLocation(placeId) {
     console.warn('取得店家座標發生錯誤：', err);
     return null;
   }
+}
+
+// ── 採買地圖 ──
+// 只抓判斷「這間店賣不賣清單上的東西」跟「現在去買得到嗎」需要的欄位：
+// primaryType / types 判斷店家類別、primaryTypeDisplayName 顯示給使用者看（例如「超市」）、
+// businessStatus 濾掉歇業的店、googleMapsUri 讓使用者點去看店家頁面。
+// currentOpeningHours 會讓請求落在 Enterprise 級距，見 config.js 的 SHOP_FETCH_OPENING_HOURS
+function shopFieldMask() {
+  const fields = [
+    'places.id',
+    'places.displayName',
+    'places.location',
+    'places.primaryType',
+    'places.primaryTypeDisplayName',
+    'places.types',
+    'places.shortFormattedAddress',
+    'places.businessStatus',
+    'places.googleMapsUri'
+  ];
+  if (SHOP_FETCH_OPENING_HOURS) fields.push('places.currentOpeningHours');
+  return fields.join(',');
+}
+
+// 回傳 { ok, status, errorText, places }：呼叫端要靠 status、errorText 判斷是不是 400（類型名稱不被接受），
+// 決定要拿掉哪個類型重查
+async function postShopSearch(method, body) {
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places:${method}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': shopFieldMask()
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.warn(`${method}（採買）回傳非 OK：`, res.status, errorText);
+      return { ok: false, status: res.status, errorText, places: [] };
+    }
+    const data = await res.json();
+    return { ok: true, status: res.status, places: data.places || [] };
+  } catch (err) {
+    console.warn(`${method}（採買）發生錯誤：`, err);
+    return { ok: false, status: 0, errorText: '', places: [] };
+  }
+}
+
+// 依店家類型找 center 附近的店，由近到遠。types 是「任一類型符合」、primaryTypes 是「主要類型符合」
+export function searchShopsNearby({ center, radius, types, primaryTypes }) {
+  const body = {
+    maxResultCount: 20,
+    locationRestriction: {
+      circle: { center: { latitude: center.lat, longitude: center.lng }, radius }
+    },
+    rankPreference: 'DISTANCE',
+    languageCode: 'zh-TW'
+  };
+  if (types?.length) body.includedTypes = types;
+  if (primaryTypes?.length) body.includedPrimaryTypes = primaryTypes;
+  return postShopSearch('searchNearby', body);
+}
+
+// Google 沒有對應類型的店（文具店、傳統市場）、連鎖店名、或完全不知道類別的品項，用文字找。
+// locationBias 只是偏好，不保證在範圍內，呼叫端要自己用距離過濾
+export function searchShopsByText({ center, radius, query }) {
+  return postShopSearch('searchText', {
+    textQuery: query,
+    pageSize: 20,
+    locationBias: {
+      circle: { center: { latitude: center.lat, longitude: center.lng }, radius: Math.min(radius, 50000) }
+    },
+    rankPreference: 'DISTANCE',
+    languageCode: 'zh-TW'
+  });
 }

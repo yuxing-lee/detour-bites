@@ -151,6 +151,8 @@ export function renderResults(places) {
       markers: mapState.placeMarkers,
       algorithm: new SuperClusterAlgorithm({ maxZoom: CLUSTER_MAX_ZOOM })
     });
+    // 搜尋跑到一半切去採買地圖的話，結果照樣更新清單，但標記先不要出現在採買地圖上，切回來時再放回去
+    if (mapState.searchLayerHidden) mapState.placeMarkerCluster.clearMarkers();
   }
   refreshFlyoverButton();
 }
