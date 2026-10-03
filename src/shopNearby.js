@@ -7,6 +7,7 @@ import {
   SHOP_CACHE_REUSE_DISTANCE_M,
   SHOP_CACHE_STORAGE_KEY,
   SHOP_UNSUPPORTED_TYPES_STORAGE_KEY,
+  SHOP_STORE_FIXES_STORAGE_KEY,
   SHOP_MAX_NAME_SEARCHES,
   SHOP_MAX_STORES_SHOWN,
   SHOP_STORES_PER_ITEM
@@ -32,6 +33,7 @@ import {
   searchKeysFor,
   placeAcceptedFor,
   chainCatsForPlace,
+  applyStoreFix,
   storeCovers,
   haversineMeters,
   openStateAt,
@@ -39,6 +41,7 @@ import {
   stripQuantity
 } from './shopMatch.js';
 import { searchShopsNearby, searchShopsByText } from './placesApi.js';
+import { showToast } from './ui.js';
 import {
   loadGoogleMapsSDK,
   initMapIfNeeded,
@@ -75,6 +78,8 @@ const SHOP_FIT_MAX_ZOOM = 17;
 const CACHE_MAX_ENTRIES = 40;
 // 被 Google 拒絕的類型記多久；過了再試一次，Google 之後開放了就會自動用上
 const UNSUPPORTED_TYPE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// 「標錯了」最多記幾間，超過就丟掉最舊的
+const STORE_FIXES_MAX_ENTRIES = 300;
 
 let getItems = () => [];
 let onUpdate = () => {};
@@ -177,6 +182,37 @@ function parseUnsupportedTypes(errorText) {
   return match ? match[1].split(/[\s,]+/).filter(Boolean) : [];
 }
 
+// ── 使用者回報標錯的店 ──
+// Google 上的店家類型是店家自己選的，標錯的店名稱比對也擋不完。使用者在店家卡片按「標錯了？」，
+// 選「不是這一類」「沒賣這個」或「整間不要再出現」，記在這裡，之後整理結果時套用（見 shopMatch.js 的 applyStoreFix）
+
+function loadStoreFixes() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SHOP_STORE_FIXES_STORAGE_KEY) || '{}');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+let storeFixes = loadStoreFixes();
+// 狀態列「已排除 N 間」的清單有沒有展開
+let fixesOpen = false;
+
+function saveStoreFixes() {
+  const ids = Object.keys(storeFixes);
+  if (ids.length > STORE_FIXES_MAX_ENTRIES) {
+    ids.sort((a, b) => (storeFixes[a].at || 0) - (storeFixes[b].at || 0))
+      .slice(0, ids.length - STORE_FIXES_MAX_ENTRIES)
+      .forEach(id => delete storeFixes[id]);
+  }
+  try {
+    localStorage.setItem(SHOP_STORE_FIXES_STORAGE_KEY, JSON.stringify(storeFixes));
+  } catch (err) {
+    console.warn('儲存標錯的店家失敗：', err);
+  }
+}
+
 // ── 搜尋 ──
 
 function splitKey(key) {
@@ -257,19 +293,21 @@ function compactPlace(p) {
 // 這次搜尋結果裡，有幾間是這個 key 真的用得到的（類別有通過 accept、連鎖店名對得上）
 function usefulCount(key, places, center, radius) {
   const [kind, id] = splitKey(key);
-  const inRange = places.filter(p => haversineMeters(center, p) <= radius);
+  // 使用者標過「整間不要」的店不算，附近的都被排除時才會放大範圍找
+  const inRange = places.filter(p => haversineMeters(center, p) <= radius && !storeFixes[p.id]?.all);
   if (kind === 'cat') {
     const served = categoriesForSearchKey(id);
     return inRange.filter(p => {
       const facts = { nameKey: itemKey(p.name), primaryType: p.primaryType };
-      return served.some(c => placeAcceptedFor(c.id, facts));
+      const notCats = storeFixes[p.id]?.cats || [];
+      return served.some(c => !notCats.includes(c.id) && placeAcceptedFor(c.id, facts));
     }).length;
   }
   if (kind === 'chain') {
     const chain = CHAINS.find(c => c.id === id);
     return inRange.filter(p => (chain.placeRe || chain.re).test(itemKey(p.name))).length;
   }
-  return inRange.length;
+  return inRange.filter(p => !storeFixes[p.id]?.names?.includes(id)).length;
 }
 
 async function fetchKey(key, query, center) {
@@ -381,10 +419,11 @@ function buildResult(items, center, entries, skippedKeys) {
       });
     });
   });
-  const all = [...stores.values()];
-  all.forEach(store => {
+  // 連鎖店補上的類別也一樣可以被使用者的修正拿掉（例如某間寶雅其實沒賣文具）
+  const all = [...stores.values()].filter(store => {
     chainCatsForPlace(store.nameKey).forEach(c => store.cats.add(c));
     store.open = openStateAt(store.hours, now);
+    return applyStoreFix(store, storeFixes[store.id]);
   });
 
   const searchable = items.filter(it => !it.awaitingAi);
@@ -501,6 +540,84 @@ function itemTextsById() {
   return new Map(getItems().map(it => [it.id, stripQuantity(it.text)]));
 }
 
+// ── 「標錯了？」 ──
+
+// 這間店是靠哪些類別、哪些品名搜尋被列進來的，就針對那個說「不是」；最後一定有「整間不要再出現」
+function reportOptionsFor(store) {
+  const texts = itemTextsById();
+  const options = [];
+  const seen = new Set();
+  getItems().forEach(it => {
+    if (!store.itemIds.includes(it.id) || !it.resolution) return;
+    const r = it.resolution;
+    if (r.mode === 'cats') {
+      r.cats.forEach(c => {
+        if (!store.cats.has(c) || seen.has(`cat:${c}`)) return;
+        seen.add(`cat:${c}`);
+        const cat = CATEGORY_BY_ID.get(c);
+        options.push({ kind: 'cat', value: c, label: `不是${cat.emoji}${cat.label}` });
+      });
+    } else if (r.mode === 'name' && store.hits.has(`name:${r.key}`) && !seen.has(`name:${r.key}`)) {
+      seen.add(`name:${r.key}`);
+      options.push({ kind: 'name', value: r.key, label: `沒賣「${texts.get(it.id)}」` });
+    }
+  });
+  options.push({ kind: 'all', value: '', label: '整間不要再出現' });
+  return options;
+}
+
+function reportMenuHtml(store) {
+  return '<div class="shop-report-title">這間店標錯了？選一個，之後就不會再推薦：</div>'
+    + reportOptionsFor(store).map(o => `<button type="button" class="shop-report-opt" data-store-id="${escapeHtml(store.id)}" data-kind="${o.kind}" data-value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</button>`).join('');
+}
+
+function describeFix(fix) {
+  if (fix.all) return '整間不要';
+  const parts = (fix.cats || []).map(c => `不是${CATEGORY_BY_ID.get(c)?.label || c}`)
+    .concat((fix.names || []).map(k => `沒賣「${k}」`));
+  return parts.join('、');
+}
+
+function reportStore(storeId, kind, value) {
+  const store = current?.shown.find(s => s.id === storeId);
+  if (!store) return;
+  const prev = storeFixes[storeId] ? structuredClone(storeFixes[storeId]) : null;
+  const fix = { ...(prev || {}), name: store.name, at: Date.now() };
+  let message;
+  if (kind === 'all') {
+    fix.all = true;
+    message = `之後不會再列出「${store.name}」`;
+  } else if (kind === 'cat') {
+    fix.cats = [...new Set([...(fix.cats || []), value])];
+    message = `「${store.name}」之後不會再當成${CATEGORY_BY_ID.get(value)?.label || value}`;
+  } else {
+    fix.names = [...new Set([...(fix.names || []), value])];
+    message = `之後找「${value}」不會再列出「${store.name}」`;
+  }
+  storeFixes[storeId] = fix;
+  saveStoreFixes();
+  closeActiveInfoWindow();
+  showToast(message, {
+    actionLabel: '復原',
+    onAction: () => {
+      if (prev) storeFixes[storeId] = prev;
+      else delete storeFixes[storeId];
+      saveStoreFixes();
+      refreshNearby();
+    }
+  });
+  // 已經查過的類別都在快取裡，重算不會多花 API；排除後附近真的沒有了才會補查其他類別
+  refreshNearby();
+}
+
+function restoreStoreFix(placeId) {
+  if (placeId) delete storeFixes[placeId];
+  else storeFixes = {};
+  saveStoreFixes();
+  if (!Object.keys(storeFixes).length) fixesOpen = false;
+  refreshNearby();
+}
+
 // ── 側邊欄 ──
 
 function centerLabel(source) {
@@ -527,7 +644,25 @@ function renderStatus() {
     if (current.center.source === 'area') html += ' <button type="button" class="shop-link-btn shop-back-to-gps">改回目前位置</button>';
     if (current.failedCount) html += '<div class="shop-status-sub shop-status-error">有些類別查詢失敗，按「重新找」再試一次。</div>';
   }
+  html += fixesHtml();
   shopNearbyStatusEl.innerHTML = html;
+}
+
+// 「已排除 N 間標錯的店」：展開可以逐間還原
+function fixesHtml() {
+  if (phase !== 'ready' && phase !== 'loading') return '';
+  const entries = Object.entries(storeFixes);
+  if (!entries.length) return '';
+  let html = `<div class="shop-status-sub">🚫 已排除 ${entries.length} 間標錯的店 <button type="button" class="shop-link-btn shop-fixes-toggle">${fixesOpen ? '收起' : '查看'}</button></div>`;
+  if (!fixesOpen) return html;
+  html += '<ul class="shop-fix-list">';
+  entries.sort(([, a], [, b]) => (b.at || 0) - (a.at || 0)).forEach(([id, fix]) => {
+    html += `<li><span class="shop-fix-name">${escapeHtml(fix.name || '(未命名)')}</span><span class="shop-fix-what">${escapeHtml(describeFix(fix))}</span>`
+      + `<button type="button" class="shop-link-btn shop-fix-undo" data-place-id="${escapeHtml(id)}">還原</button></li>`;
+  });
+  html += '</ul>';
+  if (entries.length > 1) html += '<button type="button" class="shop-link-btn shop-fix-undo" data-place-id="">全部還原</button>';
+  return html;
 }
 
 // 重新整理期間（phase 是 loading）繼續顯示上一次的結果，不要每加一樣東西整塊就閃一下
@@ -602,7 +737,8 @@ function renderStoreList() {
         + `<div class="shop-store-items">${itemButtons}</div>`
         + `<div class="shop-store-actions"><a class="shop-store-nav" href="${escapeHtml(navUrl([s]))}" target="_blank" rel="noopener noreferrer">導航 →</a>`
         + (s.mapsUri ? `<a class="shop-store-gmaps" href="${escapeHtml(s.mapsUri)}" target="_blank" rel="noopener noreferrer">店家資訊</a>` : '')
-        + '</div></div>';
+        + '<button type="button" class="shop-link-btn shop-store-report">標錯了？</button>'
+        + '</div><div class="shop-report-menu" hidden></div></div>';
     }).join('');
 }
 
@@ -652,7 +788,14 @@ function storeInfoHtml(store) {
     + (items.length ? `<div style="margin-top:4px;color:#5a6180;font-size:12px;">可以買（買到了就點）：</div><div>${itemButtons}</div>` : '')
     + `<div style="margin-top:6px;"><a href="${escapeHtml(navUrl([store]))}" target="_blank" rel="noopener noreferrer" style="color:#8a5a1f;font-weight:700;text-decoration:underline;">導航 →</a>`
     + (store.mapsUri ? `<a href="${escapeHtml(store.mapsUri)}" target="_blank" rel="noopener noreferrer" style="margin-left:10px;color:#8a5a1f;font-weight:700;text-decoration:underline;">店家資訊</a>` : '')
-    + `</div></div>`;
+    + `<button type="button" class="iw-shop-report" style="margin-left:10px;width:auto;padding:0;border:0;background:none;color:#5a6180;font-size:12px;text-decoration:underline;cursor:pointer;">標錯了？</button>`
+    + `</div><div class="iw-shop-report-menu"></div></div>`;
+}
+
+// 資訊視窗裡的「標錯了？」選項（地圖上的 InfoWindow 吃不到側邊欄的 CSS，樣式寫在行內）
+function infoReportMenuHtml(store) {
+  return '<div style="margin-top:6px;color:#5a6180;font-size:12px;">這間店標錯了？選一個，之後就不會再推薦：</div>'
+    + reportOptionsFor(store).map(o => `<button type="button" class="iw-shop-report-opt" data-kind="${o.kind}" data-value="${escapeHtml(o.value)}" style="margin:3px 4px 0 0;width:auto;padding:3px 9px;border-radius:999px;border:1px solid #d9a3a3;background:#fff1f0;color:#8a2a1f;font-size:12px;font-weight:600;cursor:pointer;">${escapeHtml(o.label)}</button>`).join('');
 }
 
 function openStoreInfo(store, marker) {
@@ -664,6 +807,15 @@ function openStoreInfo(store, marker) {
         btn.style.textDecoration = 'line-through';
         btn.style.opacity = '0.6';
         markBought(btn.dataset.itemId);
+      });
+    });
+    const reportBtn = document.querySelector('.iw-shop-report');
+    const menu = document.querySelector('.iw-shop-report-menu');
+    reportBtn?.addEventListener('click', () => {
+      reportBtn.hidden = true;
+      menu.innerHTML = infoReportMenuHtml(store);
+      menu.querySelectorAll('.iw-shop-report-opt').forEach(opt => {
+        opt.addEventListener('click', () => reportStore(store.id, opt.dataset.kind, opt.dataset.value));
       });
     });
   });
@@ -909,6 +1061,16 @@ shopSearchAreaBtn.addEventListener('click', () => {
 });
 
 shopNearbyStatusEl.addEventListener('click', (e) => {
+  if (e.target.closest('.shop-fixes-toggle')) {
+    fixesOpen = !fixesOpen;
+    renderStatus();
+    return;
+  }
+  const undo = e.target.closest('.shop-fix-undo');
+  if (undo) {
+    restoreStoreFix(undo.dataset.placeId);
+    return;
+  }
   if (!e.target.closest('.shop-back-to-gps')) return;
   areaCenter = null;
   refreshNearby();
@@ -920,6 +1082,22 @@ function onStoreAreaClick(e) {
     markBought(itemBtn.dataset.itemId);
     return;
   }
+  const opt = e.target.closest('.shop-report-opt');
+  if (opt) {
+    reportStore(opt.dataset.storeId, opt.dataset.kind, opt.dataset.value);
+    return;
+  }
+  const reportBtn = e.target.closest('.shop-store-report');
+  if (reportBtn) {
+    const card = reportBtn.closest('.shop-store');
+    const menu = card.querySelector('.shop-report-menu');
+    const store = current?.shown.find(s => s.id === card.dataset.storeId);
+    if (!store) return;
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) menu.innerHTML = reportMenuHtml(store);
+    return;
+  }
+  if (e.target.closest('.shop-report-menu')) return;
   if (e.target.closest('a')) return;
   const storeEl = e.target.closest('[data-store-id]');
   if (storeEl) focusStore(storeEl.dataset.storeId);

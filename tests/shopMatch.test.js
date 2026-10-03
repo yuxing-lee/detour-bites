@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import {
   splitItems, resolveItem, stripQuantity, itemKey, segmentByDictionary,
   KEYWORD_INDEX, CATEGORY_BY_ID, placeFacts, placeAcceptedFor, chainCatsForPlace,
-  storeCovers, planTrip, openStateAt, searchKeysFor
+  storeCovers, planTrip, openStateAt, searchKeysFor, applyStoreFix
 } from '../src/shopMatch.js';
 import { ITEM_KEYWORD_RULES, SINGLE_CHAR_RULES, CHAINS, SHOP_CATEGORIES } from '../src/shopCatalog.js';
 
@@ -158,6 +158,42 @@ test('pharmacy vs drugstore classification', () => {
   assert.equal(placeAcceptedFor('market', market), false);
   assert.equal(placeAcceptedFor('market', fakePlace('民生傳統市場', 'market')), true);
   assert.equal(placeAcceptedFor('stationery', fakePlace('文具大學', 'university')), false);
+});
+
+test('mislabeled places are rejected by name', () => {
+  // 店家自己在 Google 上亂標類型：早餐店標成超市、補習班標成書店、公司辦公室標成五金行
+  assert.equal(placeAcceptedFor('supermarket', fakePlace('美而美早餐店', 'grocery_store')), false);
+  assert.equal(placeAcceptedFor('book', fakePlace('長春文理補習班', 'book_store')), false);
+  assert.equal(placeAcceptedFor('hardware', fakePlace('大成五金 總公司', 'hardware_store')), false);
+  assert.equal(placeAcceptedFor('pet', fakePlace('毛孩寵物咖啡廳', 'pet_store')), false);
+  // 真的店不受影響
+  assert.equal(placeAcceptedFor('supermarket', fakePlace('美廉社 長春店', 'supermarket')), true);
+  assert.equal(placeAcceptedFor('hardware', fakePlace('大成五金行', 'hardware_store')), true);
+  // 麵包店兼賣早餐、咖啡很正常
+  assert.equal(placeAcceptedFor('bakery', fakePlace('吳寶春麥方店 早餐 咖啡館', 'bakery')), true);
+  // 連鎖店名對得上就相信它
+  assert.equal(placeAcceptedFor('convenience', fakePlace('全家便利商店 早餐店門市', 'convenience_store')), true);
+});
+
+test('convenience search only keeps shop-like places', () => {
+  assert.equal(placeAcceptedFor('convenience', fakePlace('7-ELEVEN 長春門市', 'convenience_store')), true);
+  assert.equal(placeAcceptedFor('convenience', fakePlace('中油 長春站', 'gas_station')), true);
+  assert.equal(placeAcceptedFor('convenience', fakePlace('阿明雜貨店', 'store')), true);
+  // 類型清單順手勾了便利商店的餐廳、診所
+  assert.equal(placeAcceptedFor('convenience', fakePlace('阿財麵線', 'restaurant')), false);
+  assert.equal(placeAcceptedFor('convenience', fakePlace('仁愛診所', 'doctor')), false);
+  assert.equal(placeAcceptedFor('convenience', fakePlace('某某商行', 'restaurant')), true, 'shop-like name wins');
+});
+
+test('user store fixes', () => {
+  const s = store('x', '某早餐店', 100, ['supermarket', 'convenience'], { hits: ['name:烏梅汁'] });
+  assert.equal(applyStoreFix(s, null), true);
+  assert.equal(applyStoreFix(s, { cats: ['supermarket'], names: ['烏梅汁'] }), true);
+  assert.deepEqual([...s.cats], ['convenience']);
+  assert.equal(storeCovers(s, resolveItem('洗衣精')), false, 'no longer a supermarket');
+  assert.equal(storeCovers(s, resolveItem('牛奶')), true, 'still a convenience store');
+  assert.equal(s.hits.has('name:烏梅汁'), false);
+  assert.equal(applyStoreFix(s, { all: true }), false);
 });
 
 test('chain enrichment for places', () => {
