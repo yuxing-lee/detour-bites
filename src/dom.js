@@ -57,6 +57,7 @@ export const shopDoneSectionEl = document.getElementById('shopDoneSection');
 export const shopDoneSummaryEl = document.getElementById('shopDoneSummary');
 export const shopDoneListEl = document.getElementById('shopDoneList');
 export const shopClearDoneBtn = document.getElementById('shopClearDoneBtn');
+export const shopNearbyEl = document.getElementById('shopNearby');
 export const shopNearbyStatusEl = document.getElementById('shopNearbyStatus');
 export const shopRefreshBtn = document.getElementById('shopRefreshBtn');
 export const shopPlanEl = document.getElementById('shopPlan');
