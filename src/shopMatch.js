@@ -1,6 +1,6 @@
 // 採買清單的純邏輯：把輸入拆成品項、判斷每個品項可以去哪類店買、判斷店家屬於哪一類、
 // 算出「跑哪幾間可以買齊」。不碰 DOM、不 import config.js，node 可以直接載入測試。
-import { SHOP_CATEGORIES, ITEM_KEYWORD_RULES, SINGLE_CHAR_RULES, CHAINS } from './shopCatalog.js';
+import { SHOP_CATEGORIES, ITEM_KEYWORD_RULES, SINGLE_CHAR_RULES, CHAINS, NOT_A_SHOP_NAME_RE } from './shopCatalog.js';
 
 export const CATEGORY_BY_ID = new Map(SHOP_CATEGORIES.map(c => [c.id, c]));
 
@@ -293,10 +293,12 @@ export function placeFacts(place) {
   };
 }
 
-// 一間店在某個類別的搜尋結果裡出現時，是不是真的算那一類（藥局／藥妝店要靠店名再分一次）
+// 一間店在某個類別的搜尋結果裡出現時，是不是真的算那一類（藥局／藥妝店要靠店名再分一次）。
+// 店名一看就是餐廳、補習班、辦公室的，不管 Google 上標成什麼類型都不算；認得的連鎖店例外
 export function placeAcceptedFor(categoryId, facts) {
   const cat = CATEGORY_BY_ID.get(categoryId);
   if (!cat) return false;
+  if (!cat.foodNamesOk && NOT_A_SHOP_NAME_RE.test(facts.nameKey) && !chainCatsForPlace(facts.nameKey).length) return false;
   return cat.accept ? cat.accept(facts) : true;
 }
 
@@ -307,6 +309,19 @@ export function chainCatsForPlace(nameKey) {
     if (chainMatchesPlace(chain, nameKey)) cats = mergeCats(cats, chain.cats);
   });
   return cats;
+}
+
+// 使用者回報「這間店標錯了」的修正（存在 localStorage，key 是 Google 的 place id）：
+//   all   → 整間都不要再出現
+//   cats  → 這間店其實不是這幾類（例如被標成超市的早餐店）
+//   names → 用品名搜尋找到、但其實沒賣的品項比對鍵
+// store 是 buildResult 裡的 { cats: Set, hits: Set }，會直接改掉；回傳 false 代表整間拿掉
+export function applyStoreFix(store, fix) {
+  if (!fix) return true;
+  if (fix.all) return false;
+  (fix.cats || []).forEach(c => store.cats.delete(c));
+  (fix.names || []).forEach(k => store.hits.delete(`name:${k}`));
+  return true;
 }
 
 // 店家 store 是否買得到品項（resolution 是 resolveItem 的結果）。

@@ -10,6 +10,20 @@ function isNonShop(place) {
   return NON_SHOP_TYPE_RE.test(place.primaryType || '');
 }
 
+// Google 上的店家類型是店家自己選的，常常亂標：早餐店標成超市、補習班標成書店、公司辦公室標成五金行。
+// 店名本身就說明「這裡是吃東西的、上課的、住宿的、辦公的」時，不管類型標什麼都不當成要找的店
+// （麵包店除外，烘焙坊常常兼賣早餐、咖啡）。連鎖店名對得上的不受影響（見 shopMatch.js 的 placeAcceptedFor）
+export const NOT_A_SHOP_NAME_RE = /餐廳|餐館|餐酒館|小吃|食堂|麵店|麵館|便當|自助餐|早餐|早午餐|火鍋|鍋物|燒烤|燒肉|拉麵|牛肉麵|滷味|鹹酥雞|雞排|炸雞|手搖|飲料店|咖啡廳|咖啡館|甜點店|冰店|熱炒|快炒|居酒屋|酒吧|restaurant|bistro|補習班|文理|安親|才藝|幼兒園|托嬰|旅館|旅店|民宿|hotel|hostel|總公司|辦公室|事務所|營業所|服務處|倉庫|物流/;
+
+// 便利商店用 includedTypes 找（加油站、超市裡的便利商店也算），但這樣也會撈到「類型清單裡順手勾了便利商店」的
+// 餐廳、檳榔攤。主要類型是商店類的，或店名看得出是商店的才算
+const CONVENIENCE_PRIMARY_TYPES = new Set(['', 'convenience_store', 'grocery_store', 'supermarket', 'gas_station', 'store', 'food_store']);
+const CONVENIENCE_NAME_RE = /便利|超商|商店|商行|雜貨|柑仔店|超市|mart|7eleven|全家|萊爾富|hilife|ok超商/;
+
+function isConvenience(place) {
+  return CONVENIENCE_PRIMARY_TYPES.has(place.primaryType || '') || CONVENIENCE_NAME_RE.test(place.nameKey);
+}
+
 // 藥局跟藥妝店在 Google 上的類型常常混在一起（屈臣氏可能被標成 pharmacy、街角藥局被標成 drugstore），
 // 所以兩類共用同一次搜尋，再用店名把「真的有藥師、買得到藥」的藥局，跟賣保養化妝品的藥妝店分開
 const PHARMACY_NAME_RE = /藥局|藥房|藥師|藥行|藥品|健保特約|調劑|pharmacy|大樹|杏一|丁丁|躍獅|佑全|啄木鳥|醫療用品|醫療器材|醫材/;
@@ -30,10 +44,11 @@ function isDrugstore(place) {
 //   search.types        → Nearby Search 的 includedTypes（店家任一類型符合就算，例如加油站裡的便利商店）
 //   search.query        → Text Search（Google 沒有對應類型的店，例如文具店、傳統市場，用中文關鍵字找）
 // search.key 相同的類別共用同一次搜尋（藥局／藥妝店），再用 accept 判斷店家各自屬於哪一類。
-// hint 會出現在修改類別的選單上，也會一起交給 AI 判斷沒收錄的品項
+// hint 會出現在修改類別的選單上，也會一起交給 AI 判斷沒收錄的品項。
+// foodNamesOk：店名像餐廳（含「早餐」「咖啡館」）也照收，見 NOT_A_SHOP_NAME_RE
 export const SHOP_CATEGORIES = [
   { id: 'convenience', label: '便利商店', emoji: '🏪', hint: '7-11、全家：飲料零食、簡單日用品、繳費取貨',
-    search: { key: 'convenience', types: ['convenience_store'] } },
+    search: { key: 'convenience', types: ['convenience_store'] }, accept: isConvenience },
   { id: 'supermarket', label: '超市・量販', emoji: '🛒', hint: '全聯、家樂福、好市多：食材、調味料、清潔用品、日用品',
     search: { key: 'supermarket', primaryTypes: ['supermarket', 'grocery_store', 'hypermarket', 'discount_supermarket', 'warehouse_store'] } },
   { id: 'pharmacy', label: '藥局', emoji: '💊', hint: '藥局：成藥、保健食品、醫療用品、奶粉尿布',
@@ -49,7 +64,7 @@ export const SHOP_CATEGORIES = [
   { id: 'fruit', label: '水果行', emoji: '🍎', hint: '水果',
     search: { key: 'fruit', query: '水果行' }, accept: p => /水果|果菜|青果|蔬果|果行|果園/.test(p.nameKey) && !isNonShop(p) },
   { id: 'bakery', label: '麵包店', emoji: '🥐', hint: '麵包、吐司、蛋糕',
-    search: { key: 'bakery', primaryTypes: ['bakery'] } },
+    search: { key: 'bakery', primaryTypes: ['bakery'] }, foodNamesOk: true },
   { id: 'stationery', label: '文具店', emoji: '✏️', hint: '文具店、書局：筆、本子、紙類、辦公用品',
     search: { key: 'stationery', query: '文具店' }, accept: p => !isNonShop(p) },
   { id: 'book', label: '書店', emoji: '📚', hint: '書、雜誌、漫畫',
@@ -79,7 +94,7 @@ export const SHOP_CATEGORIES = [
   { id: 'scooter', label: '機車行', emoji: '🛵', hint: '機油、輪胎、機車保養與用品',
     search: { key: 'scooter', query: '機車行' }, accept: p => !isNonShop(p) },
   { id: 'auto', label: '汽車百貨', emoji: '🚗', hint: '汽車用品、零件',
-    search: { key: 'auto', types: ['auto_parts_store'] } },
+    search: { key: 'auto', types: ['auto_parts_store'] }, accept: p => !isNonShop(p) },
   { id: 'gas', label: '加油站', emoji: '⛽', hint: '加油',
     search: { key: 'gas', primaryTypes: ['gas_station'] } },
   { id: 'post', label: '郵局', emoji: '📮', hint: '寄信、寄包裹、郵票',

@@ -48,6 +48,8 @@ export const SHOP_MEMORY_STORAGE_KEY = 'detour-bites:shoppingMemory';
 export const SHOP_CACHE_STORAGE_KEY = 'detour-bites:shopSearchCache';
 // Google 回覆不認得的店家類型（新類型還沒開放時），記一陣子，之後的搜尋直接不帶
 export const SHOP_UNSUPPORTED_TYPES_STORAGE_KEY = 'detour-bites:shopUnsupportedTypes';
+// 使用者回報「標錯了」的店家（不是這一類、沒賣這個、整間不要再出現），一直記著，可以在採買清單上還原
+export const SHOP_STORE_FIXES_STORAGE_KEY = 'detour-bites:shopStoreFixes';
 
 // 採買地圖：預設找多遠內的店；某一類在這個範圍內一間都找不到時，自動放大到 SHOP_EXPANDED_RADIUS_M 再找一次，
 // 讓「附近沒有五金行」也能告訴使用者最近的在哪
